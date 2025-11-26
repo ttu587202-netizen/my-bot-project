@@ -1,14 +1,14 @@
 import os
 from flask import Flask, request, jsonify
-from google import genai
-from google.generativeai.errors import APIError
+# SỬA: Dùng cách import chính xác cho thư viện google-genai
+from google import genai 
+from google.genai.errors import APIError # SỬA: Đảm bảo đường dẫn chính xác
 import logging
 
 # Thiết lập logging cơ bản để dễ dàng gỡ lỗi trên Render
 logging.basicConfig(level=logging.INFO)
 
 # --- KHỞI TẠO ỨNG DỤNG ---
-# Đảm bảo tên biến là 'app' để tương thích với lệnh gunicorn app:app
 app = Flask(__name__)
 
 # --- Cấu hình và Khởi tạo Gemini Client ---
@@ -17,7 +17,6 @@ client = None
 
 if API_KEY:
     try:
-        # Khởi tạo client chỉ khi có API Key
         client = genai.Client(api_key=API_KEY)
         logging.info("Gemini Client được khởi tạo thành công.")
     except Exception as e:
@@ -60,7 +59,7 @@ def ask_gemini():
         
         # Gọi mô hình Gemini
         response = client.models.generate_content(
-            model='gemini-2.5-flash',  # Mô hình nhanh và hiệu quả
+            model='gemini-2.5-flash',
             contents=prompt
         )
         
@@ -82,8 +81,6 @@ def ask_gemini():
         return jsonify({"error": "Lỗi không xác định", "message": str(e)}), 500
 
 # --- Lệnh chạy ứng dụng (Chỉ chạy khi kiểm thử cục bộ) ---
-# Render sẽ dùng gunicorn, nên phần này không chạy trên Render
 if __name__ == '__main__':
-    # Chỉ chạy cục bộ cho mục đích kiểm thử
     app.run(host='0.0.0.0', port=5000)
-        
+            
