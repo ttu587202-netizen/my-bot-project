@@ -61,7 +61,6 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
 async def render_help_embed(interaction: discord.Interaction):
     """Tạo và gửi Embed hướng dẫn siêu hiện đại."""
     
-    # Sử dụng hình ảnh đại diện cho giao diện hiện đại
     IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
 
     embed = create_styled_embed(
@@ -247,16 +246,13 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # BƯỚC 1: Render ngay lập tức (EDIT) trạng thái loading
         await interaction.response.edit_message(
             embed=create_styled_embed("🔄 Đang Render...", "Vui lòng chờ. Hệ thống đang lấy dữ liệu mới nhất...", VIBRANT_COLOR),
             view=self
         )
         
-        # BƯỚC 2: Gọi API (tốn thời gian)
         result_embed = await check_mail_logic(self.user_id)
         
-        # BƯỚC 3: Render kết quả cuối cùng
         await interaction.edit_original_response(embed=result_embed, view=self)
 
     @discord.ui.button(label="🗑️ Xóa Email Vĩnh Viễn", style=discord.ButtonStyle.danger, emoji="🗑️")
@@ -265,16 +261,13 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
             
-        # BƯỚC 1: Render ngay lập tức trạng thái đang xóa
         await interaction.response.edit_message(
             embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR, footer_text="Không thể hoàn tác thao tác này."),
             view=None
         )
         
-        # BƯỚC 2: Gọi Logic xóa
         result_embed = await delete_email_account_logic(self.user_id)
         
-        # BƯỚC 3: Render kết quả cuối cùng (View=None vì đã xóa)
         await interaction.edit_original_response(embed=result_embed, view=None)
 
 class EmailCreationView(discord.ui.View):
@@ -340,15 +333,13 @@ async def get_temp_email(interaction: discord.Interaction):
         
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
-        # Render kết quả Siêu Bắt Mắt
+        # Render kết quả Siêu Bắt Mắt (FIX: Email trong Description để tránh xuống dòng)
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
-            "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin.",
-            ACCENT_COLOR, # Dùng màu nhấn mạnh
+            f"🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin:\n\n**📧 Địa Chỉ Email:**\n```\n{email_address}\n```", 
+            ACCENT_COLOR, 
             thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
             fields=[
-                # FIX: Hiển thị email trên 1 dòng dài nhất có thể
-                ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Đến khi bạn xóa", True)
             ],
@@ -441,4 +432,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
