@@ -60,15 +60,15 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
     return embed
 
 async def render_help_embed(interaction: discord.Interaction):
-    """Tạo và gửi Embed hướng dẫn siêu hiện đại."""
+    """Tạo và gửi Embed hướng dẫn siêu hiện đại. Đã loại bỏ hình ảnh bị lỗi."""
     
-    IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
-
+    # Loại bỏ IMAGE_URL bị lỗi
+    
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.5",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.6",
         "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
         VIBRANT_COLOR, 
-        thumbnail_url="https://i.imgur.com/8QzXy2A.png",
+        # BỎ thumbnail_url
         fields=[
             ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
             (
@@ -83,7 +83,6 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
              (
-            # Chú thích: Bot hiện xem 5 thư gần nhất.
                 "Cách Dùng", 
                 "```bash\n/check_mail\n```", 
                 True
@@ -107,7 +106,7 @@ async def render_help_embed(interaction: discord.Interaction):
         ],
         footer_text="© Hyper-Aesthetic System | Thời gian phản hồi API trung bình: < 1 giây."
     )
-    embed.set_image(url=IMAGE_URL)
+    # BỎ embed.set_image(url=IMAGE_URL)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
@@ -136,7 +135,7 @@ async def delete_email_account_logic(user_id: int):
                 "🗑️ ĐÃ XÓA THÀNH CÔNG",
                 f"Địa chỉ **`{email_address}`** đã được gỡ bỏ vĩnh viễn khỏi hệ thống Mail.tm.",
                 ACCENT_COLOR,
-                thumbnail_url="https://i.imgur.com/8QzXy2A.png"
+                # BỎ thumbnail_url
             )
         else:
              return create_styled_embed(
@@ -156,7 +155,7 @@ async def delete_email_account_logic(user_id: int):
         )
 
 async def check_mail_logic(user_id: int):
-    """Logic kiểm tra mail được tách ra để tái sử dụng. Đã cập nhật để xem 5 thư gần nhất và trình bày hiện đại hơn."""
+    """Logic kiểm tra mail được tách ra để tái sử dụng."""
     
     if user_id not in user_temp_mails:
         return create_styled_embed(
@@ -198,7 +197,7 @@ async def check_mail_logic(user_id: int):
             f"📬 HỘP THƯ ĐẾN ({total_messages} Thư) - Hiển thị {display_count} thư gần nhất",
             f"Địa chỉ Email của bạn: **`{email_address}`**",
             VIBRANT_COLOR,
-            thumbnail_url="https://i.imgur.com/L79tK0k.png" 
+            # BỎ thumbnail_url
         )
 
         # Lặp qua 5 thư gần nhất (messages[:5])
@@ -258,7 +257,6 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # FIX TRIỆT ĐỂ LỖI ĐANG SUY NGHĨ: Dùng response.edit_message() để cập nhật tin nhắn hiện tại
         # BƯỚC 1: Cập nhật Embed ngay lập tức thành trạng thái Loading
         await interaction.response.edit_message(
             embed=create_styled_embed("🔄 Đang Làm Mới Mail...", "Vui lòng chờ trong giây lát. Hệ thống đang kiểm tra hộp thư...", VIBRANT_COLOR),
@@ -358,7 +356,7 @@ async def get_temp_email(interaction: discord.Interaction):
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
             "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin. Vui lòng copy địa chỉ bên dưới:", 
             ACCENT_COLOR, 
-            thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
+            # BỎ thumbnail_url
             fields=[
                 ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
