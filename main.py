@@ -7,15 +7,13 @@ import uuid
 import random
 from datetime import datetime
 import os 
-import threading # Cần thiết để chạy bot và web server song song
-from flask import Flask # Import Flask
+import threading 
+from flask import Flask 
 
 # ==========================================================
 # >>> CẤU HÌNH BOT & KHÓA <<<
 # ==========================================================
-# Lấy Discord Token từ Biến Môi Trường (RENDER)
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
-# PORT mặc định Render sẽ cấp phát
 PORT = int(os.environ.get("PORT", 10000)) 
 # ==========================================================
 
@@ -24,11 +22,13 @@ PORT = int(os.environ.get("PORT", 10000))
 API_BASE_URL = "https://api.mail.tm"
 DEFAULT_TIMEOUT = 15
 
-# Bảng Màu Hiện Đại (HEX)
-VIBRANT_COLOR = 0x30D5C8  # Neon Cyan
-ERROR_COLOR = 0xED4245    # Discord Red
-WARNING_COLOR = 0xFEE75C  # Discord Yellow
-SUCCESS_COLOR = 0x57F287  # Discord Green
+# Bảng Màu Siêu Hiện Đại (Hyper-Aesthetic)
+VIBRANT_COLOR = 0x30D5C8      # Neon Cyan/Turquoise (Chủ đạo)
+ACCENT_COLOR = 0xFF5733       # Bright Orange (Nhấn mạnh)
+ERROR_COLOR = 0xED4245        # Discord Red
+WARNING_COLOR = 0xFEE75C      # Discord Yellow
+SUCCESS_COLOR = 0x57F287      # Discord Green
+NEUTRAL_COLOR = 0x2F3136      # Discord Dark Gray (Nền)
 
 # Key: Discord User ID (int), Value: {'address': str, 'token': str, 'account_id': str}
 user_temp_mails = {}
@@ -40,7 +40,7 @@ bot = commands.Bot(command_prefix=None, intents=intents, help_command=None)
 
 # --- 2. Hàm Tiện Ích ---
 
-def create_styled_embed(title, description, color, thumbnail_url=None, fields=None):
+def create_styled_embed(title, description, color, thumbnail_url=None, fields=None, footer_text=None, image_url=None):
     """Hàm tiện ích tạo Embed với style hiện đại."""
     embed = discord.Embed(
         title=title,
@@ -52,7 +52,63 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
     if fields:
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
+    if footer_text:
+        embed.set_footer(text=footer_text)
+    if image_url:
+        embed.set_image(url=image_url)
     return embed
+
+async def render_help_embed(interaction: discord.Interaction):
+    """Tạo và gửi Embed hướng dẫn siêu hiện đại."""
+    
+    # Sử dụng hình ảnh đại diện cho giao diện hiện đại
+    IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
+
+    embed = create_styled_embed(
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.1",
+        "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
+        ACCENT_COLOR,
+        thumbnail_url="https://i.imgur.com/8QzXy2A.png",
+        fields=[
+            ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
+            (
+                "Cách Dùng", 
+                "```bash\n/get_email\n```", 
+                True
+            ),
+            (
+                "Mô Tả", 
+                "Tạo email và nhận được token bảo mật độc quyền của bạn.", 
+                True
+            ),
+            ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
+             (
+                "Cách Dùng", 
+                "```bash\n/check_mail\n```", 
+                True
+            ),
+            (
+                "Mô Tả", 
+                "Kiểm tra thủ công hoặc nhấn nút 🔄.", 
+                True
+            ),
+            ("🗑️ Lệnh Xóa", "Gỡ bỏ vĩnh viễn tài khoản email khỏi API.", False),
+            (
+                "Cách Dùng", 
+                "```bash\n/delete_email\n```", 
+                True
+            ),
+            (
+                "Mô Tả", 
+                "Nên xóa sau khi sử dụng xong để bảo mật.", 
+                True
+            )
+        ],
+        footer_text="© Hyper-Aesthetic System | Thời gian phản hồi API trung bình: < 1 giây."
+    )
+    embed.set_image(url=IMAGE_URL)
+
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
 async def delete_email_account_logic(user_id: int):
     """Logic xóa tài khoản email, trả về Embed."""
@@ -72,14 +128,13 @@ async def delete_email_account_logic(user_id: int):
         headers = {'Authorization': f'Bearer {email_token}'}
         delete_response = requests.delete(f"{API_BASE_URL}/accounts/{account_id}", headers=headers, timeout=DEFAULT_TIMEOUT)
         
-        # Xóa khỏi bộ nhớ cục bộ
         del user_temp_mails[user_id]
 
         if delete_response.status_code == 204:
             return create_styled_embed(
                 "🗑️ ĐÃ XÓA THÀNH CÔNG",
                 f"Địa chỉ **`{email_address}`** đã được gỡ bỏ vĩnh viễn khỏi hệ thống Mail.tm.",
-                VIBRANT_COLOR,
+                ACCENT_COLOR,
                 thumbnail_url="https://i.imgur.com/8QzXy2A.png"
             )
         else:
@@ -125,8 +180,8 @@ async def check_mail_logic(user_id: int):
 
         if not messages:
             embed = create_styled_embed(
-                "📥 HỘP THƯ TRỐNG",
-                f"Địa chỉ đang kiểm tra: **`{email_address}`**\n\nChưa có tin nhắn nào. Vẫn đang chờ tin...",
+                "📥 HỘP THƯ TRỐNG (Đang chờ mail...)",
+                f"Địa chỉ đang kiểm tra: **`{email_address}`**\n\nBạn có thể nhấn nút 🔄 để kiểm tra lại.",
                 VIBRANT_COLOR
             )
             embed.set_footer(text=f"Cập nhật lúc: {datetime.now().strftime('%H:%M:%S')}")
@@ -140,7 +195,6 @@ async def check_mail_logic(user_id: int):
             thumbnail_url="https://i.imgur.com/L79tK0k.png" 
         )
 
-        # Chỉ hiển thị 3 tin nhắn mới nhất để tránh Embed quá dài
         for i, msg in enumerate(messages[:3]): 
             detail_response = requests.get(f"{API_BASE_URL}/messages/{msg['id']}", headers=headers, timeout=DEFAULT_TIMEOUT)
             
@@ -187,7 +241,6 @@ class CheckMailView(discord.ui.View):
         super().__init__(timeout=300) 
         self.user_id = user_id
 
-    # Tối ưu hóa RENDER: EDIT MESSAGE cho tương tác nút
     @discord.ui.button(label="🔄 Kiểm tra lại Hộp thư", style=discord.ButtonStyle.secondary, emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -214,7 +267,7 @@ class CheckMailView(discord.ui.View):
             
         # BƯỚC 1: Render ngay lập tức trạng thái đang xóa
         await interaction.response.edit_message(
-            embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR),
+            embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR, footer_text="Không thể hoàn tác thao tác này."),
             view=None
         )
         
@@ -236,12 +289,10 @@ class EmailCreationView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # Dùng defer cho lệnh chuyển trạng thái và chuẩn bị gửi tin nhắn mới (followup)
         await interaction.response.defer(thinking=True, ephemeral=True) 
         
         result_embed = await check_mail_logic(self.user_id)
         
-        # Gửi tin nhắn mới (followup) với View kiểm tra mail
         await interaction.followup.send(embed=result_embed, view=CheckMailView(self.user_id), ephemeral=True)
 
 # --- 4. Các Lệnh Slash (Tương tác ban đầu) ---
@@ -250,7 +301,6 @@ class EmailCreationView(discord.ui.View):
 async def get_temp_email(interaction: discord.Interaction):
     
     user_id = interaction.user.id
-    # Dùng defer cho lệnh tạo tài khoản (tốn thời gian)
     await interaction.response.defer(ephemeral=True, thinking=True)
 
     if user_id in user_temp_mails:
@@ -290,19 +340,20 @@ async def get_temp_email(interaction: discord.Interaction):
         
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
-        # Render kết quả
+        # Render kết quả Siêu Bắt Mắt
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
             "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin.",
-            VIBRANT_COLOR,
+            ACCENT_COLOR, # Dùng màu nhấn mạnh
             thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
             fields=[
-                ("📧 Địa Chỉ Email", f"```\n{email_address}\n```", False),
+                # FIX: Hiển thị email trên 1 dòng dài nhất có thể
+                ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Đến khi bạn xóa", True)
-            ]
+            ],
+            footer_text=f"Tạo bởi {interaction.user.name} | Click nút để kiểm tra!"
         )
-        embed.set_footer(text=f"Tạo bởi {interaction.user.name} | Click nút để kiểm tra!")
 
         await interaction.followup.send(embed=embed, view=EmailCreationView(user_id), ephemeral=True)
 
@@ -337,6 +388,10 @@ async def delete_temp_email(interaction: discord.Interaction):
     
     await interaction.followup.send(embed=result_embed, ephemeral=True)
 
+@bot.tree.command(name="help", description="Hiển thị bảng lệnh Siêu Hiện Đại.")
+async def help_command(interaction: discord.Interaction):
+    await render_help_embed(interaction)
+
 # --- 5. FIX RENDER: Thiết lập Web Server Flask ---
 
 app = Flask(__name__)
@@ -348,7 +403,6 @@ def home():
 
 def run_flask():
     """Chạy Flask server trên thread riêng."""
-    # Render yêu cầu host 0.0.0.0 để nghe tất cả các giao diện mạng
     app.run(host="0.0.0.0", port=PORT)
 
 # --- 6. Sự kiện và Khởi động Bot Chính ---
@@ -374,12 +428,11 @@ def main():
         print("LỖI: Biến môi trường DISCORD_TOKEN chưa được thiết lập. Vui lòng thiết lập DISCORD_TOKEN trên Render.")
         return
         
-    # Chạy Flask server trên một thread riêng (tránh block bot)
+    # Chạy Flask server trên một thread riêng (FIX Treo Render)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
     try:
-        # Chạy Bot chính
         bot.run(DISCORD_TOKEN)
     except discord.errors.LoginFailure:
         print("LỖI: Discord Bot Token không hợp lệ. Kiểm tra giá trị DISCORD_TOKEN.")
@@ -388,4 +441,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
+    
