@@ -58,13 +58,14 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
         embed.set_image(url=image_url)
     return embed
 
+# ... (Hàm render_help_embed giữ nguyên) ...
 async def render_help_embed(interaction: discord.Interaction):
     """Tạo và gửi Embed hướng dẫn siêu hiện đại."""
     
     IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
 
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.1",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.2",
         "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
         ACCENT_COLOR,
         thumbnail_url="https://i.imgur.com/8QzXy2A.png",
@@ -77,7 +78,7 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             (
                 "Mô Tả", 
-                "Tạo email và nhận được token bảo mật độc quyền của bạn.", 
+                "Tạo email. **Địa chỉ email sẽ nằm trên một dòng** để dễ copy.", 
                 True
             ),
             ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
@@ -108,7 +109,7 @@ async def render_help_embed(interaction: discord.Interaction):
     embed.set_image(url=IMAGE_URL)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
-
+# ... (Hàm delete_email_account_logic giữ nguyên) ...
 async def delete_email_account_logic(user_id: int):
     """Logic xóa tài khoản email, trả về Embed."""
     if user_id not in user_temp_mails:
@@ -153,6 +154,7 @@ async def delete_email_account_logic(user_id: int):
             ERROR_COLOR
         )
 
+# ... (Hàm check_mail_logic giữ nguyên) ...
 async def check_mail_logic(user_id: int):
     """Logic kiểm tra mail được tách ra để tái sử dụng."""
     
@@ -246,14 +248,14 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        await interaction.response.edit_message(
-            embed=create_styled_embed("🔄 Đang Render...", "Vui lòng chờ. Hệ thống đang lấy dữ liệu mới nhất...", VIBRANT_COLOR),
-            view=self
-        )
+        # FIX VẤN ĐỀ 2: Chỉ defer và dùng followup.edit_message để tránh lỗi 50035
+        await interaction.response.defer(thinking=True, ephemeral=True) 
         
+        # BƯỚC 2: Gọi API (tốn thời gian)
         result_embed = await check_mail_logic(self.user_id)
         
-        await interaction.edit_original_response(embed=result_embed, view=self)
+        # BƯỚC 3: Render kết quả cuối cùng
+        await interaction.followup.edit_message(message_id=interaction.message.id, embed=result_embed, view=self)
 
     @discord.ui.button(label="🗑️ Xóa Email Vĩnh Viễn", style=discord.ButtonStyle.danger, emoji="🗑️")
     async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -261,14 +263,21 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
             
-        await interaction.response.edit_message(
+        # FIX VẤN ĐỀ 2: Chỉ defer và dùng followup.edit_message để tránh lỗi 50035
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        
+        # BƯỚC 1: Cập nhật trạng thái Đang Xóa trước
+        await interaction.followup.edit_message(
+            message_id=interaction.message.id,
             embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR, footer_text="Không thể hoàn tác thao tác này."),
             view=None
         )
         
+        # BƯỚC 2: Gọi Logic xóa
         result_embed = await delete_email_account_logic(self.user_id)
         
-        await interaction.edit_original_response(embed=result_embed, view=None)
+        # BƯỚC 3: Render kết quả cuối cùng
+        await interaction.followup.edit_message(message_id=interaction.message.id, embed=result_embed, view=None)
 
 class EmailCreationView(discord.ui.View):
     """View gắn vào tin nhắn tạo email, chỉ có nút Kiểm tra Mail."""
@@ -294,6 +303,7 @@ class EmailCreationView(discord.ui.View):
 async def get_temp_email(interaction: discord.Interaction):
     
     user_id = interaction.user.id
+    # Defer (tạm hoãn) tương tác để có 15 phút xử lý
     await interaction.response.defer(ephemeral=True, thinking=True)
 
     if user_id in user_temp_mails:
@@ -307,7 +317,7 @@ async def get_temp_email(interaction: discord.Interaction):
         return
 
     try:
-        # Logic tạo tài khoản
+        # Logic tạo tài khoản giữ nguyên
         domains_response = requests.get(f"{API_BASE_URL}/domains", timeout=DEFAULT_TIMEOUT)
         domains_response.raise_for_status() 
 
@@ -333,10 +343,13 @@ async def get_temp_email(interaction: discord.Interaction):
         
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
-        # Render kết quả Siêu Bắt Mắt (FIX: Email trong Description để tránh xuống dòng)
+        # FIX VẤN ĐỀ 1: Địa chỉ email trong Content để đảm bảo một dòng
+        content_message = f"**📧 Địa Chỉ Email:** ` {email_address} `"
+        
+        # Render Embed Siêu Bắt Mắt
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
-            f"🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin:\n\n**📧 Địa Chỉ Email:**\n```\n{email_address}\n```", 
+            "🎉 Sử dụng địa chỉ email trên (vui lòng copy). Các thông tin chi tiết:", 
             ACCENT_COLOR, 
             thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
             fields=[
@@ -346,7 +359,8 @@ async def get_temp_email(interaction: discord.Interaction):
             footer_text=f"Tạo bởi {interaction.user.name} | Click nút để kiểm tra!"
         )
 
-        await interaction.followup.send(embed=embed, view=EmailCreationView(user_id), ephemeral=True)
+        # Gửi tin nhắn với Content (email 1 dòng) và Embed (thông tin chi tiết)
+        await interaction.followup.send(content=content_message, embed=embed, view=EmailCreationView(user_id), ephemeral=True)
 
     except Timeout:
         await interaction.followup.send(embed=create_styled_embed("🛑 Lỗi Kết Nối API", "Mail.tm không phản hồi kịp thời (Timeout).", ERROR_COLOR), ephemeral=True)
