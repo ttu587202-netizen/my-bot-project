@@ -1,6 +1,7 @@
 # Cần cài đặt: pip install discord.py requests flask
 import discord
 from discord.ext import commands
+from discord.ext.commands import CommandOnCooldown
 import requests
 from requests.exceptions import Timeout, HTTPError
 import uuid
@@ -33,10 +34,14 @@ NEUTRAL_COLOR = 0x2F3136      # Discord Dark Gray (Nền)
 # Key: Discord User ID (int), Value: {'address': str, 'token': str, 'account_id': str}
 user_temp_mails = {}
 
+# Danh sách các domain bị cấm hoặc không mong muốn (Cần cập nhật thủ công nếu có)
+DOMAIN_BLACKLIST = ["example.com", "youdontwantme.net"] 
+
 intents = discord.Intents.default()
 intents.message_content = True 
 
 # Tạo Bot với cấu hình tối giản
+# ĐÃ TẮT prefix, bot chỉ dùng slash commands
 bot = commands.Bot(command_prefix=None, intents=intents, help_command=None) 
 
 # --- 2. Hàm Tiện Ích ---
@@ -62,13 +67,10 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
 async def render_help_embed(interaction: discord.Interaction):
     """Tạo và gửi Embed hướng dẫn siêu hiện đại. Đã loại bỏ hình ảnh bị lỗi."""
     
-    # Loại bỏ IMAGE_URL bị lỗi
-    
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.6",
-        "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V3.0 (Anti-Abuse)",
+        "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng. **Đã tích hợp cơ chế chống lạm dụng.**",
         VIBRANT_COLOR, 
-        # BỎ thumbnail_url
         fields=[
             ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
             (
@@ -78,7 +80,7 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             (
                 "Mô Tả", 
-                "Tạo email. Địa chỉ nằm trong bảng lệnh (Field) để tiện copy.", 
+                "Tạo email. Có **giới hạn tốc độ** (1 lần/30s) để tránh lạm dụng.", 
                 True
             ),
             ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
@@ -89,7 +91,7 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             (
                 "Mô Tả", 
-                "Kiểm tra thủ công. Bot hiển thị **5 thư gần nhất**. Nhấn nút **Làm Mới** để cập nhật.", 
+                "Kiểm tra thủ công (**5 thư gần nhất**). Nhấn nút **Làm Mới** để cập nhật nhanh.", 
                 True
             ),
             ("🗑️ Lệnh Xóa", "Gỡ bỏ vĩnh viễn tài khoản email khỏi API.", False),
@@ -104,9 +106,8 @@ async def render_help_embed(interaction: discord.Interaction):
                 True
             )
         ],
-        footer_text="© Hyper-Aesthetic System | Thời gian phản hồi API trung bình: < 1 giây."
+        footer_text="© Hyper-Aesthetic System | Anti-Abuse V3.0 Active"
     )
-    # BỎ embed.set_image(url=IMAGE_URL)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
@@ -135,7 +136,6 @@ async def delete_email_account_logic(user_id: int):
                 "🗑️ ĐÃ XÓA THÀNH CÔNG",
                 f"Địa chỉ **`{email_address}`** đã được gỡ bỏ vĩnh viễn khỏi hệ thống Mail.tm.",
                 ACCENT_COLOR,
-                # BỎ thumbnail_url
             )
         else:
              return create_styled_embed(
@@ -155,7 +155,7 @@ async def delete_email_account_logic(user_id: int):
         )
 
 async def check_mail_logic(user_id: int):
-    """Logic kiểm tra mail được tách ra để tái sử dụng."""
+    """Logic kiểm tra mail, xem 5 thư gần nhất."""
     
     if user_id not in user_temp_mails:
         return create_styled_embed(
@@ -179,7 +179,7 @@ async def check_mail_logic(user_id: int):
         embed_fields = []
 
         if not messages:
-            # Cải tiến thông báo Hộp thư trống
+            # Thông báo Hộp thư trống
             embed = create_styled_embed(
                 "💌 HỘP THƯ TRỐNG RỖNG",
                 f"✅ Địa chỉ đang hoạt động: **`{email_address}`**\n\n**Trạng thái:** Không tìm thấy tin nhắn nào. Nhấn **Làm Mới Mailbox** để kiểm tra lại.",
@@ -197,7 +197,6 @@ async def check_mail_logic(user_id: int):
             f"📬 HỘP THƯ ĐẾN ({total_messages} Thư) - Hiển thị {display_count} thư gần nhất",
             f"Địa chỉ Email của bạn: **`{email_address}`**",
             VIBRANT_COLOR,
-            # BỎ thumbnail_url
         )
 
         # Lặp qua 5 thư gần nhất (messages[:5])
@@ -309,6 +308,7 @@ class EmailCreationView(discord.ui.View):
 # --- 4. Các Lệnh Slash (Tương tác ban đầu) ---
 
 @bot.tree.command(name="get_email", description="Tạo một địa chỉ email ảo tạm thời mới (Mail.tm).")
+@commands.cooldown(1, 30, commands.BucketType.user) # Rate Limiter: 1 lần/30 giây/người dùng
 async def get_temp_email(interaction: discord.Interaction):
     
     user_id = interaction.user.id
@@ -333,7 +333,17 @@ async def get_temp_email(interaction: discord.Interaction):
         if not domain_list:
             raise Exception("Không thể lấy danh sách domain hợp lệ.")
             
-        domain = random.choice(domain_list)['domain']
+        # Lọc bỏ các domain trong danh sách đen
+        valid_domains = [d['domain'] for d in domain_list if d['domain'] not in DOMAIN_BLACKLIST]
+        
+        if not valid_domains:
+            await interaction.followup.send(
+                embed=create_styled_embed("🛑 Lỗi Hệ Thống Domain", "Không còn domain khả dụng (tất cả đã bị cấm).", ERROR_COLOR), 
+                ephemeral=True
+            )
+            return
+            
+        domain = random.choice(valid_domains)
         
         username = uuid.uuid4().hex[:10]
         password = uuid.uuid4().hex
@@ -351,12 +361,11 @@ async def get_temp_email(interaction: discord.Interaction):
         
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
-        # Render Embed Siêu Bắt Mắt (Email trong Field)
+        # Render Embed
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
             "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin. Vui lòng copy địa chỉ bên dưới:", 
             ACCENT_COLOR, 
-            # BỎ thumbnail_url
             fields=[
                 ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
@@ -373,6 +382,38 @@ async def get_temp_email(interaction: discord.Interaction):
         await interaction.followup.send(embed=create_styled_embed("🛑 Lỗi API Mail.tm", f"Không thể tạo tài khoản. Mã lỗi: {e.response.status_code}.", ERROR_COLOR), ephemeral=True)
     except Exception as e:
         await interaction.followup.send(embed=create_styled_embed("❌ Lỗi Hệ Thống", f"Đã xảy ra lỗi không xác định: `{e}`", ERROR_COLOR), ephemeral=True)
+
+# --- 4.1 Xử lý lỗi Cooldown ---
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, CommandOnCooldown):
+        remaining = error.retry_after
+        # Làm tròn thời gian còn lại
+        if remaining < 1:
+            time_left = "1 giây"
+        elif remaining < 60:
+            time_left = f"{int(remaining)} giây"
+        else:
+            minutes = int(remaining // 60)
+            seconds = int(remaining % 60)
+            time_left = f"{minutes} phút {seconds} giây"
+            
+        embed = create_styled_embed(
+            "⏳ CHẬM LẠI! ANTI-ABUSE ĐÃ KÍCH HOẠT",
+            f"Lệnh `/get_email` có giới hạn tốc độ. Vui lòng chờ **{time_left}** trước khi sử dụng lại.",
+            WARNING_COLOR
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        # Xử lý các lỗi khác như lỗi 50035 (Invalid Form Body)
+        # Note: Lỗi 50035 đã được FIX triệt để trong logic nút bấm (CheckMailView)
+        # Nếu lỗi khác xảy ra, gửi thông báo lỗi chung
+        print(f"Lỗi: {error}")
+        await interaction.response.send_message(
+            embed=create_styled_embed("❌ Lỗi Hệ Thống Chung", f"Đã xảy ra lỗi không xác định: `{error}`", ERROR_COLOR),
+            ephemeral=True
+        )
+
 
 @bot.tree.command(name="check_mail", description="Kiểm tra hộp thư email ảo hiện tại của bạn.")
 async def check_temp_mail(interaction: discord.Interaction):
