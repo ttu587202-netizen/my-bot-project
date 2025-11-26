@@ -1,4 +1,4 @@
-# Cần cài đặt: pip install discord.py requests
+# Cần cài đặt: pip install discord.py requests flask
 import discord
 from discord.ext import commands
 import requests
@@ -6,13 +6,17 @@ from requests.exceptions import Timeout, HTTPError
 import uuid
 import random
 from datetime import datetime
-import os # Thư viện cần thiết để lấy biến môi trường
+import os 
+import threading # Cần thiết để chạy bot và web server song song
+from flask import Flask # Import Flask
 
 # ==========================================================
 # >>> CẤU HÌNH BOT & KHÓA <<<
 # ==========================================================
-# FIX: Lấy Discord Token từ Biến Môi Trường (RENDER)
+# Lấy Discord Token từ Biến Môi Trường (RENDER)
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
+# PORT mặc định Render sẽ cấp phát
+PORT = int(os.environ.get("PORT", 10000)) 
 # ==========================================================
 
 # --- 1. Thiết lập Cấu hình API, Lưu trữ và Bảng Màu Thống nhất ---
@@ -136,6 +140,7 @@ async def check_mail_logic(user_id: int):
             thumbnail_url="https://i.imgur.com/L79tK0k.png" 
         )
 
+        # Chỉ hiển thị 3 tin nhắn mới nhất để tránh Embed quá dài
         for i, msg in enumerate(messages[:3]): 
             detail_response = requests.get(f"{API_BASE_URL}/messages/{msg['id']}", headers=headers, timeout=DEFAULT_TIMEOUT)
             
@@ -182,7 +187,7 @@ class CheckMailView(discord.ui.View):
         super().__init__(timeout=300) 
         self.user_id = user_id
 
-    # FIX: Tối ưu hóa RENDER cho nút Refresh
+    # Tối ưu hóa RENDER: EDIT MESSAGE cho tương tác nút
     @discord.ui.button(label="🔄 Kiểm tra lại Hộp thư", style=discord.ButtonStyle.secondary, emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -259,7 +264,7 @@ async def get_temp_email(interaction: discord.Interaction):
         return
 
     try:
-        # Logic tạo tài khoản (không thay đổi)
+        # Logic tạo tài khoản
         domains_response = requests.get(f"{API_BASE_URL}/domains", timeout=DEFAULT_TIMEOUT)
         domains_response.raise_for_status() 
 
@@ -332,7 +337,21 @@ async def delete_temp_email(interaction: discord.Interaction):
     
     await interaction.followup.send(embed=result_embed, ephemeral=True)
 
-# --- 5. Chạy Bot ---
+# --- 5. FIX RENDER: Thiết lập Web Server Flask ---
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    """Endpoint cơ bản để Render kiểm tra bot còn hoạt động không."""
+    return "Bot Discord Email Ảo đang hoạt động!", 200
+
+def run_flask():
+    """Chạy Flask server trên thread riêng."""
+    # Render yêu cầu host 0.0.0.0 để nghe tất cả các giao diện mạng
+    app.run(host="0.0.0.0", port=PORT)
+
+# --- 6. Sự kiện và Khởi động Bot Chính ---
 
 @bot.event
 async def on_ready():
@@ -347,15 +366,20 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Lỗi khi đồng bộ hóa lệnh slash: {e}")
         
-    print('Bot sẵn sàng nhận lệnh email ảo.')
+    print(f'Bot sẵn sàng nhận lệnh email ảo. Flask chạy trên cổng {PORT}')
     print('---' * 15)
 
 def main():
     if not DISCORD_TOKEN:
-        print("LỖI: Biến môi trường DISCORD_TOKEN chưa được thiết lập. Vui lòng thiết lập trên Render.")
+        print("LỖI: Biến môi trường DISCORD_TOKEN chưa được thiết lập. Vui lòng thiết lập DISCORD_TOKEN trên Render.")
         return
         
+    # Chạy Flask server trên một thread riêng (tránh block bot)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+    
     try:
+        # Chạy Bot chính
         bot.run(DISCORD_TOKEN)
     except discord.errors.LoginFailure:
         print("LỖI: Discord Bot Token không hợp lệ. Kiểm tra giá trị DISCORD_TOKEN.")
