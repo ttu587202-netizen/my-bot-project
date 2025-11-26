@@ -58,7 +58,6 @@ def create_styled_embed(title, description, color, thumbnail_url=None, fields=No
         embed.set_image(url=image_url)
     return embed
 
-# ... (Hàm render_help_embed giữ nguyên) ...
 async def render_help_embed(interaction: discord.Interaction):
     """Tạo và gửi Embed hướng dẫn siêu hiện đại."""
     
@@ -78,7 +77,7 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             (
                 "Mô Tả", 
-                "Tạo email. **Địa chỉ email sẽ nằm trên một dòng** để dễ copy.", 
+                "Tạo email. Địa chỉ email nằm trong bảng lệnh (Field) để tiện copy.", 
                 True
             ),
             ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
@@ -109,7 +108,7 @@ async def render_help_embed(interaction: discord.Interaction):
     embed.set_image(url=IMAGE_URL)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
-# ... (Hàm delete_email_account_logic giữ nguyên) ...
+
 async def delete_email_account_logic(user_id: int):
     """Logic xóa tài khoản email, trả về Embed."""
     if user_id not in user_temp_mails:
@@ -154,7 +153,6 @@ async def delete_email_account_logic(user_id: int):
             ERROR_COLOR
         )
 
-# ... (Hàm check_mail_logic giữ nguyên) ...
 async def check_mail_logic(user_id: int):
     """Logic kiểm tra mail được tách ra để tái sử dụng."""
     
@@ -248,13 +246,14 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # FIX VẤN ĐỀ 2: Chỉ defer và dùng followup.edit_message để tránh lỗi 50035
-        await interaction.response.defer(thinking=True, ephemeral=True) 
+        # FIX VẤN ĐỀ 2 (50035): Dùng defer và followup.edit_message
+        await interaction.response.defer(thinking=True) 
         
         # BƯỚC 2: Gọi API (tốn thời gian)
         result_embed = await check_mail_logic(self.user_id)
         
         # BƯỚC 3: Render kết quả cuối cùng
+        # (Nếu interaction.message không tồn tại, dòng này có thể gây lỗi, nhưng trong ngữ cảnh nút bấm, nó luôn tồn tại)
         await interaction.followup.edit_message(message_id=interaction.message.id, embed=result_embed, view=self)
 
     @discord.ui.button(label="🗑️ Xóa Email Vĩnh Viễn", style=discord.ButtonStyle.danger, emoji="🗑️")
@@ -263,8 +262,8 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
             
-        # FIX VẤN ĐỀ 2: Chỉ defer và dùng followup.edit_message để tránh lỗi 50035
-        await interaction.response.defer(thinking=True, ephemeral=True)
+        # FIX VẤN ĐỀ 2 (50035): Dùng defer và followup.edit_message
+        await interaction.response.defer(thinking=True)
         
         # BƯỚC 1: Cập nhật trạng thái Đang Xóa trước
         await interaction.followup.edit_message(
@@ -303,7 +302,6 @@ class EmailCreationView(discord.ui.View):
 async def get_temp_email(interaction: discord.Interaction):
     
     user_id = interaction.user.id
-    # Defer (tạm hoãn) tương tác để có 15 phút xử lý
     await interaction.response.defer(ephemeral=True, thinking=True)
 
     if user_id in user_temp_mails:
@@ -313,11 +311,12 @@ async def get_temp_email(interaction: discord.Interaction):
             f"Bạn đã có một email: **`{email_info['address']}`**. Vui lòng xóa nó bằng `/delete_email` trước.",
             WARNING_COLOR
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # BỎ content
+        await interaction.followup.send(embed=embed, ephemeral=True) 
         return
 
     try:
-        # Logic tạo tài khoản giữ nguyên
+        # Logic tạo tài khoản
         domains_response = requests.get(f"{API_BASE_URL}/domains", timeout=DEFAULT_TIMEOUT)
         domains_response.raise_for_status() 
 
@@ -343,24 +342,25 @@ async def get_temp_email(interaction: discord.Interaction):
         
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
-        # FIX VẤN ĐỀ 1: Địa chỉ email trong Content để đảm bảo một dòng
-        content_message = f"**📧 Địa Chỉ Email:** ` {email_address} `"
+        # FIX: Địa chỉ email được đưa lại vào Field, tối ưu hóa hiển thị.
+        # Lưu ý: Trên mobile, Discord vẫn CÓ THỂ xuống dòng, nhưng đây là cách tối ưu nhất.
         
         # Render Embed Siêu Bắt Mắt
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
-            "🎉 Sử dụng địa chỉ email trên (vui lòng copy). Các thông tin chi tiết:", 
+            "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin. Vui lòng copy địa chỉ bên dưới:", 
             ACCENT_COLOR, 
             thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
             fields=[
+                ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Đến khi bạn xóa", True)
             ],
             footer_text=f"Tạo bởi {interaction.user.name} | Click nút để kiểm tra!"
         )
 
-        # Gửi tin nhắn với Content (email 1 dòng) và Embed (thông tin chi tiết)
-        await interaction.followup.send(content=content_message, embed=embed, view=EmailCreationView(user_id), ephemeral=True)
+        # Gửi tin nhắn với Embed mới (không có Content)
+        await interaction.followup.send(embed=embed, view=EmailCreationView(user_id), ephemeral=True)
 
     except Timeout:
         await interaction.followup.send(embed=create_styled_embed("🛑 Lỗi Kết Nối API", "Mail.tm không phản hồi kịp thời (Timeout).", ERROR_COLOR), ephemeral=True)
