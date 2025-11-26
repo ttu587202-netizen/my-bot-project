@@ -65,7 +65,7 @@ async def render_help_embed(interaction: discord.Interaction):
     IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
 
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.4",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.5",
         "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
         VIBRANT_COLOR, 
         thumbnail_url="https://i.imgur.com/8QzXy2A.png",
@@ -83,13 +83,14 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
              (
+            # Chú thích: Bot hiện xem 5 thư gần nhất.
                 "Cách Dùng", 
                 "```bash\n/check_mail\n```", 
                 True
             ),
             (
                 "Mô Tả", 
-                "Kiểm tra thủ công hoặc nhấn nút **Làm Mới Mailbox**.", 
+                "Kiểm tra thủ công. Bot hiển thị **5 thư gần nhất**. Nhấn nút **Làm Mới** để cập nhật.", 
                 True
             ),
             ("🗑️ Lệnh Xóa", "Gỡ bỏ vĩnh viễn tài khoản email khỏi API.", False),
@@ -155,7 +156,7 @@ async def delete_email_account_logic(user_id: int):
         )
 
 async def check_mail_logic(user_id: int):
-    """Logic kiểm tra mail được tách ra để tái sử dụng."""
+    """Logic kiểm tra mail được tách ra để tái sử dụng. Đã cập nhật để xem 5 thư gần nhất và trình bày hiện đại hơn."""
     
     if user_id not in user_temp_mails:
         return create_styled_embed(
@@ -179,23 +180,29 @@ async def check_mail_logic(user_id: int):
         embed_fields = []
 
         if not messages:
+            # Cải tiến thông báo Hộp thư trống
             embed = create_styled_embed(
-                "📥 HỘP THƯ TRỐNG (Đang chờ mail...)",
-                f"Địa chỉ đang kiểm tra: **`{email_address}`**\n\nNhấn **Làm Mới Mailbox** để kiểm tra lại.",
+                "💌 HỘP THƯ TRỐNG RỖNG",
+                f"✅ Địa chỉ đang hoạt động: **`{email_address}`**\n\n**Trạng thái:** Không tìm thấy tin nhắn nào. Nhấn **Làm Mới Mailbox** để kiểm tra lại.",
                 VIBRANT_COLOR
             )
             embed.set_footer(text=f"Cập nhật lúc: {datetime.now().strftime('%H:%M:%S')}")
             return embed
 
+        # Tính toán số lượng thư sẽ hiển thị (tối đa 5)
+        total_messages = len(messages)
+        display_count = min(total_messages, 5)
+        
         # Tạo Embed hiển thị các tin nhắn
         embed = create_styled_embed(
-            f"📬 {len(messages)} TIN NHẮN MỚI NHẤT",
-            f"Địa chỉ đang kiểm tra: **`{email_address}`**",
+            f"📬 HỘP THƯ ĐẾN ({total_messages} Thư) - Hiển thị {display_count} thư gần nhất",
+            f"Địa chỉ Email của bạn: **`{email_address}`**",
             VIBRANT_COLOR,
             thumbnail_url="https://i.imgur.com/L79tK0k.png" 
         )
 
-        for i, msg in enumerate(messages[:3]): 
+        # Lặp qua 5 thư gần nhất (messages[:5])
+        for i, msg in enumerate(messages[:5]): 
             detail_response = requests.get(f"{API_BASE_URL}/messages/{msg['id']}", headers=headers, timeout=DEFAULT_TIMEOUT)
             
             sender = msg.get('from', {}).get('address', 'Ẩn danh')
@@ -205,11 +212,15 @@ async def check_mail_logic(user_id: int):
                 detail = detail_response.json()
                 body_text = detail.get('text', 'Không có nội dung văn bản.')
                 
-                content_preview = body_text.strip()[:200].replace('\n', ' ')
+                # Cắt ngắn xem trước nội dung
+                content_preview = body_text.strip()[:150].replace('\n', ' ')
+                if len(body_text.strip()) > 150:
+                    content_preview += '...'
                 
+                # Cải tiến cách trình bày từng thư
                 embed_fields.append((
-                    f"📧 Tiêu đề: {subject}",
-                    f"**Người gửi:** `{sender}`\n**Xem trước:** ```\n{content_preview}\n```",
+                    f"#{i+1} | Chủ đề: **{subject}**", 
+                    f"**👤 Người gửi:** `{sender}`\n**📝 Xem trước:** `{content_preview}`",
                     False
                 ))
             else:
@@ -442,4 +453,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
