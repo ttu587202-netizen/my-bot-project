@@ -65,9 +65,9 @@ async def render_help_embed(interaction: discord.Interaction):
     IMAGE_URL = "https://i.imgur.com/GfVwY0B.png" 
 
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.3",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V2.4",
         "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng.",
-        VIBRANT_COLOR, # Dùng màu chủ đạo cho Help
+        VIBRANT_COLOR, 
         thumbnail_url="https://i.imgur.com/8QzXy2A.png",
         fields=[
             ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
@@ -89,7 +89,7 @@ async def render_help_embed(interaction: discord.Interaction):
             ),
             (
                 "Mô Tả", 
-                "Kiểm tra thủ công hoặc nhấn nút **Làm Mới** bên dưới.", 
+                "Kiểm tra thủ công hoặc nhấn nút **Làm Mới Mailbox**.", 
                 True
             ),
             ("🗑️ Lệnh Xóa", "Gỡ bỏ vĩnh viễn tài khoản email khỏi API.", False),
@@ -122,7 +122,7 @@ async def delete_email_account_logic(user_id: int):
     email_info = user_temp_mails[user_id]
     account_id = email_info['account_id']
     email_address = email_info['address']
-    email_token = email_info['token'] # Dùng token để xóa
+    email_token = email_info['token']
 
     try:
         headers = {'Authorization': f'Bearer {email_token}'}
@@ -241,19 +241,15 @@ class CheckMailView(discord.ui.View):
         super().__init__(timeout=300) 
         self.user_id = user_id
 
-    # CẬP NHẬT: Tên nút và Style đẹp mắt hơn
     @discord.ui.button(label="Làm Mới Mailbox", style=discord.ButtonStyle.primary, emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # FIX TRIỆT ĐỂ LỖI NÚT (50035): Defer ngay lập tức
-        await interaction.response.defer(thinking=True) 
-        
-        # BƯỚC 1: Render ngay trạng thái Loading
-        await interaction.followup.edit_message(
-            message_id=interaction.message.id,
+        # FIX TRIỆT ĐỂ LỖI ĐANG SUY NGHĨ: Dùng response.edit_message() để cập nhật tin nhắn hiện tại
+        # BƯỚC 1: Cập nhật Embed ngay lập tức thành trạng thái Loading
+        await interaction.response.edit_message(
             embed=create_styled_embed("🔄 Đang Làm Mới Mail...", "Vui lòng chờ trong giây lát. Hệ thống đang kiểm tra hộp thư...", VIBRANT_COLOR),
             view=self
         )
@@ -261,22 +257,18 @@ class CheckMailView(discord.ui.View):
         # BƯỚC 2: Gọi API (tốn thời gian)
         result_embed = await check_mail_logic(self.user_id)
         
-        # BƯỚC 3: Render kết quả cuối cùng (luôn chỉnh sửa tin nhắn gốc)
-        await interaction.followup.edit_message(message_id=interaction.message.id, embed=result_embed, view=self)
+        # BƯỚC 3: Render kết quả cuối cùng (sử dụng edit_original_response)
+        await interaction.edit_original_response(embed=result_embed, view=self)
 
-    # CẬP NHẬT: Style nút Xóa đẹp hơn
+
     @discord.ui.button(label="Xóa Email Vĩnh Viễn", style=discord.ButtonStyle.danger, emoji="🗑️")
     async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
             
-        # FIX TRIỆT ĐỂ LỖI NÚT (50035): Defer ngay lập tức
-        await interaction.response.defer(thinking=True)
-        
         # BƯỚC 1: Cập nhật trạng thái Đang Xóa trước
-        await interaction.followup.edit_message(
-            message_id=interaction.message.id,
+        await interaction.response.edit_message(
             embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR, footer_text="Không thể hoàn tác thao tác này."),
             view=None
         )
@@ -285,7 +277,7 @@ class CheckMailView(discord.ui.View):
         result_embed = await delete_email_account_logic(self.user_id)
         
         # BƯỚC 3: Render kết quả cuối cùng (View=None vì đã xóa)
-        await interaction.followup.edit_message(message_id=interaction.message.id, embed=result_embed, view=None)
+        await interaction.edit_original_response(embed=result_embed, view=None)
 
 class EmailCreationView(discord.ui.View):
     """View gắn vào tin nhắn tạo email, chỉ có nút Kiểm tra Mail."""
@@ -293,7 +285,6 @@ class EmailCreationView(discord.ui.View):
         super().__init__(timeout=300)
         self.user_id = user_id
     
-    # CẬP NHẬT: Style nút Check Mail đẹp hơn
     @discord.ui.button(label="📥 Kiểm tra Hộp Thư Ngay!", style=discord.ButtonStyle.success, emoji="✅")
     async def check_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -304,7 +295,6 @@ class EmailCreationView(discord.ui.View):
         
         result_embed = await check_mail_logic(self.user_id)
         
-        # Sau khi kiểm tra mail, gửi tin nhắn mới với các nút Làm Mới/Xóa
         await interaction.followup.send(embed=result_embed, view=CheckMailView(self.user_id), ephemeral=True)
 
 # --- 4. Các Lệnh Slash (Tương tác ban đầu) ---
@@ -359,7 +349,6 @@ async def get_temp_email(interaction: discord.Interaction):
             ACCENT_COLOR, 
             thumbnail_url="https://i.imgur.com/8QzXy2A.png", 
             fields=[
-                # Tối ưu hóa lại Code Block để Discord cố gắng hiển thị 1 dòng
                 ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Đến khi bạn xóa", True)
@@ -384,7 +373,6 @@ async def check_temp_mail(interaction: discord.Interaction):
     
     result_embed = await check_mail_logic(user_id)
     
-    # Gửi kết quả với các nút làm mới/xóa
     if user_id in user_temp_mails:
         await interaction.followup.send(embed=result_embed, view=CheckMailView(user_id), ephemeral=True)
     else:
@@ -454,3 +442,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
