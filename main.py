@@ -10,6 +10,7 @@ from datetime import datetime
 import os 
 import threading 
 from flask import Flask 
+import time
 
 # ==========================================================
 # >>> CẤU HÌNH BOT & KHÓA <<<
@@ -32,130 +33,104 @@ SUCCESS_COLOR = 0x57F287      # Discord Green
 NEUTRAL_COLOR = 0x2F3136      # Discord Dark Gray (Nền)
 
 # Key: Discord User ID (int), Value: {'address': str, 'token': str, 'account_id': str}
+# LƯU Ý: Bot chỉ lưu email GẦN NHẤT để kiểm tra. Email cũ sẽ bị quên.
 user_temp_mails = {}
 
-# Danh sách các domain bị cấm hoặc không mong muốn (Cần cập nhật thủ công nếu có)
+# Danh sách các domain bị cấm hoặc không mong muốn
 DOMAIN_BLACKLIST = ["example.com", "youdontwantme.net"] 
+
+# Hệ thống AI Giám sát
+user_ai_monitor = {} 
 
 intents = discord.Intents.default()
 intents.message_content = True 
 
 # Tạo Bot với cấu hình tối giản
-# ĐÃ TẮT prefix, bot chỉ dùng slash commands
 bot = commands.Bot(command_prefix=None, intents=intents, help_command=None) 
 
-# --- 2. Hàm Tiện Ích ---
+# ==========================================================
+# >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) <<<
+# ==========================================================
+class AIAntiAbuseMonitor:
+    """Giả lập hệ thống AI bảo vệ và giám sát người chơi thời gian thực."""
+    
+    ABUSE_THRESHOLD = 5         # Ngưỡng lạm dụng để bị cấm tạm thời
+    MAX_EMAIL_PER_HOUR = 10     # Giới hạn số email tạo trong 1 giờ
 
-def create_styled_embed(title, description, color, thumbnail_url=None, fields=None, footer_text=None, image_url=None):
+    def __init__(self, user_id):
+        self.user_id = user_id
+        # Điểm lạm dụng (tăng khi có hành vi đáng ngờ)
+        self.abuse_score = 0
+        # Mốc thời gian tạo email gần nhất
+        self.last_email_creation_time = time.time()
+        # Số lượng email đã tạo trong 1 giờ qua
+        self.email_count_last_hour = 0
+        # Thời gian bị cấm (timestamp)
+        self.banned_until = 0
+
+    def check_and_update_creation(self):
+        """Kiểm tra và cập nhật khi người dùng tạo email mới."""
+        current_time = time.time()
+
+        # Reset bộ đếm nếu đã qua 1 giờ
+        if current_time - self.last_email_creation_time > 3600:
+            self.email_count_last_hour = 0
+            self.last_email_creation_time = current_time
+
+        self.email_count_last_hour += 1
+
+        # CẢNH BÁO: Tăng điểm lạm dụng nếu tạo quá nhanh
+        if self.email_count_last_hour > self.MAX_EMAIL_PER_HOUR:
+            self.abuse_score += 2
+            
+        # Nếu điểm lạm dụng vượt ngưỡng, cấm 1 giờ
+        if self.abuse_score >= self.ABUSE_THRESHOLD:
+            self.banned_until = current_time + 3600  # Cấm 1 giờ
+            return False, "🛑 AI V5.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
+
+        return True, None
+
+    def check_ban_status(self):
+        """Kiểm tra xem người dùng có đang bị cấm hay không."""
+        current_time = time.time()
+        if self.banned_until > current_time:
+            time_left = self.banned_until - current_time
+            return False, f"🛑 HỆ THỐNG AI ĐÃ CHẶN: Bạn bị cấm truy cập bot. Vui lòng chờ {int(time_left // 60)} phút {int(time_left % 60)} giây."
+        
+        # Giảm điểm lạm dụng khi không bị cấm
+        if self.abuse_score > 0:
+            self.abuse_score -= 1 # Giảm dần điểm lạm dụng
+            
+        return True, None
+# ==========================================================
+
+
+# --- 3. Hàm Tiện Ích ---
+
+def create_styled_embed(title, description, color, fields=None, footer_text=None):
     """Hàm tiện ích tạo Embed với style hiện đại."""
     embed = discord.Embed(
         title=title,
         description=description,
         color=color
     )
-    if thumbnail_url:
-        embed.set_thumbnail(url=thumbnail_url)
     if fields:
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     if footer_text:
         embed.set_footer(text=footer_text)
-    if image_url:
-        embed.set_image(url=image_url)
     return embed
 
-async def render_help_embed(interaction: discord.Interaction):
-    """Tạo và gửi Embed hướng dẫn siêu hiện đại. Đã loại bỏ hình ảnh bị lỗi."""
-    
-    embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V3.0 (Anti-Abuse)",
-        "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm** tích hợp trực tiếp vào Discord. Giao diện tối giản, tốc độ ánh sáng. **Đã tích hợp cơ chế chống lạm dụng.**",
-        VIBRANT_COLOR, 
-        fields=[
-            ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
-            (
-                "Cách Dùng", 
-                "```bash\n/get_email\n```", 
-                True
-            ),
-            (
-                "Mô Tả", 
-                "Tạo email. Có **giới hạn tốc độ** (1 lần/30s) để tránh lạm dụng.", 
-                True
-            ),
-            ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của bạn.", False),
-             (
-                "Cách Dùng", 
-                "```bash\n/check_mail\n```", 
-                True
-            ),
-            (
-                "Mô Tả", 
-                "Kiểm tra thủ công (**5 thư gần nhất**). Nhấn nút **Làm Mới** để cập nhật nhanh.", 
-                True
-            ),
-            ("🗑️ Lệnh Xóa", "Gỡ bỏ vĩnh viễn tài khoản email khỏi API.", False),
-            (
-                "Cách Dùng", 
-                "```bash\n/delete_email\n```", 
-                True
-            ),
-            (
-                "Mô Tả", 
-                "Nên xóa sau khi sử dụng xong để bảo mật.", 
-                True
-            )
-        ],
-        footer_text="© Hyper-Aesthetic System | Anti-Abuse V3.0 Active"
-    )
+def get_user_monitor(user_id):
+    """Lấy hoặc tạo mới đối tượng AI giám sát cho người dùng."""
+    if user_id not in user_ai_monitor:
+        user_ai_monitor[user_id] = AIAntiAbuseMonitor(user_id)
+    return user_ai_monitor[user_id]
 
-    await interaction.response.send_message(embed=embed, ephemeral=False)
-
-async def delete_email_account_logic(user_id: int):
-    """Logic xóa tài khoản email, trả về Embed."""
-    if user_id not in user_temp_mails:
-        return create_styled_embed(
-            "⚠️ Không tìm thấy Email", 
-            "Bạn không có email ảo đang hoạt động để xóa.", 
-            WARNING_COLOR
-        )
-        
-    email_info = user_temp_mails[user_id]
-    account_id = email_info['account_id']
-    email_address = email_info['address']
-    email_token = email_info['token']
-
-    try:
-        headers = {'Authorization': f'Bearer {email_token}'}
-        delete_response = requests.delete(f"{API_BASE_URL}/accounts/{account_id}", headers=headers, timeout=DEFAULT_TIMEOUT)
-        
-        del user_temp_mails[user_id]
-
-        if delete_response.status_code == 204:
-            return create_styled_embed(
-                "🗑️ ĐÃ XÓA THÀNH CÔNG",
-                f"Địa chỉ **`{email_address}`** đã được gỡ bỏ vĩnh viễn khỏi hệ thống Mail.tm.",
-                ACCENT_COLOR,
-            )
-        else:
-             return create_styled_embed(
-                "🛑 Lỗi Xóa API", 
-                f"Xóa mail thất bại (Mã lỗi: {delete_response.status_code}). Tuy nhiên, email đã bị xóa khỏi bộ nhớ bot.", 
-                ERROR_COLOR
-            )
-
-    except Exception as e:
-        if user_id in user_temp_mails:
-            del user_temp_mails[user_id]
-        
-        return create_styled_embed(
-            "❌ Lỗi Hệ Thống", 
-            f"Lỗi kết nối khi xóa: `{e}`. Email đã bị xóa khỏi bot.",
-            ERROR_COLOR
-        )
+# LOẠI BỎ HÀM delete_email_account_logic
 
 async def check_mail_logic(user_id: int):
-    """Logic kiểm tra mail, xem 5 thư gần nhất."""
+    """Logic kiểm tra mail, xem 5 thư gần nhất. KHÔNG CẦN CHỈNH SỬA"""
     
     if user_id not in user_temp_mails:
         return create_styled_embed(
@@ -242,10 +217,10 @@ async def check_mail_logic(user_id: int):
         return create_styled_embed("❌ Lỗi Xử Lý Dữ Liệu", f"Đã xảy ra lỗi không xác định: `{e}`. Vui lòng thử lại.", ERROR_COLOR)
 
 
-# --- 3. Custom Views (Buttons Rendering) ---
+# --- 4. Custom Views (Buttons Rendering) ---
 
 class CheckMailView(discord.ui.View):
-    """View chứa các nút tương tác cho email ảo (Làm Mới & Xóa)."""
+    """View chứa nút Tương tác cho email ảo (Làm Mới). Đã bỏ nút Xóa."""
     def __init__(self, user_id: int):
         super().__init__(timeout=300) 
         self.user_id = user_id
@@ -263,29 +238,12 @@ class CheckMailView(discord.ui.View):
         )
 
         # BƯỚC 2: Gọi API (tốn thời gian)
-        result_embed = await check_mail_logic(self.user_id)
+        result_embed = await check_mail_logic(self.user_id) 
         
         # BƯỚC 3: Render kết quả cuối cùng (sử dụng edit_original_response)
         await interaction.edit_original_response(embed=result_embed, view=self)
 
-
-    @discord.ui.button(label="Xóa Email Vĩnh Viễn", style=discord.ButtonStyle.danger, emoji="🗑️")
-    async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
-            return
-            
-        # BƯỚC 1: Cập nhật trạng thái Đang Xóa trước
-        await interaction.response.edit_message(
-            embed=create_styled_embed("🗑️ Đang Xóa...", "Vui lòng chờ. Hệ thống đang gỡ bỏ tài khoản Mail.tm.", ERROR_COLOR, footer_text="Không thể hoàn tác thao tác này."),
-            view=None
-        )
-        
-        # BƯỚC 2: Gọi Logic xóa
-        result_embed = await delete_email_account_logic(self.user_id)
-        
-        # BƯỚC 3: Render kết quả cuối cùng (View=None vì đã xóa)
-        await interaction.edit_original_response(embed=result_embed, view=None)
+    # LOẠI BỎ nút delete_button
 
 class EmailCreationView(discord.ui.View):
     """View gắn vào tin nhắn tạo email, chỉ có nút Kiểm tra Mail."""
@@ -305,25 +263,35 @@ class EmailCreationView(discord.ui.View):
         
         await interaction.followup.send(embed=result_embed, view=CheckMailView(self.user_id), ephemeral=True)
 
-# --- 4. Các Lệnh Slash (Tương tác ban đầu) ---
+
+# --- 5. Các Lệnh Slash (Tương tác ban đầu) ---
 
 @bot.tree.command(name="get_email", description="Tạo một địa chỉ email ảo tạm thời mới (Mail.tm).")
 @commands.cooldown(1, 30, commands.BucketType.user) # Rate Limiter: 1 lần/30 giây/người dùng
 async def get_temp_email(interaction: discord.Interaction):
     
     user_id = interaction.user.id
+    
+    # ********** BƯỚC ẢI AI: KIỂM TRA GIÁM SÁT THỜI GIAN THỰC **********
+    monitor = get_user_monitor(user_id)
+    is_safe, ban_message = monitor.check_ban_status()
+    
+    if not is_safe:
+        await interaction.response.send_message(embed=create_styled_embed("🚫 AI BLOCK", ban_message, ERROR_COLOR), ephemeral=True)
+        return
+    
+    # BƯỚC 2: Cập nhật AI monitor (giả lập AI đang theo dõi hành vi tạo mail)
+    is_safe, ban_message = monitor.check_and_update_creation()
+    if not is_safe:
+        await interaction.response.send_message(embed=create_styled_embed("🚫 AI BLOCK", ban_message, ERROR_COLOR), ephemeral=True)
+        return
+    # ********** KẾT THÚC BƯỚC ẢI AI **********
+    
     await interaction.response.defer(ephemeral=True, thinking=True)
 
-    if user_id in user_temp_mails:
-        email_info = user_temp_mails[user_id]
-        embed = create_styled_embed(
-            "⚠️ EMAIL ĐANG HOẠT ĐỘNG",
-            f"Bạn đã có một email: **`{email_info['address']}`**. Vui lòng xóa nó bằng `/delete_email` trước.",
-            WARNING_COLOR
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True) 
-        return
-
+    # LOẠI BỎ LOGIC KIỂM TRA EMAIL CŨ (if user_id in user_temp_mails: ...)
+    # => Bot sẽ luôn tạo email mới và cập nhật user_temp_mails[user_id]
+    
     try:
         # Logic tạo tài khoản
         domains_response = requests.get(f"{API_BASE_URL}/domains", timeout=DEFAULT_TIMEOUT)
@@ -359,17 +327,18 @@ async def get_temp_email(interaction: discord.Interaction):
         login_response.raise_for_status()
         token = login_response.json()['token']
         
+        # CẬP NHẬT EMAIL MỚI (Mất khả năng kiểm tra mail cũ nếu có)
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
         # Render Embed
         embed = create_styled_embed(
             "⚡️ TẠO EMAIL ẢO THÀNH CÔNG (MAIL.TM)",
-            "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin. Vui lòng copy địa chỉ bên dưới:", 
+            "🎉 Địa chỉ email tạm thời của bạn đã sẵn sàng để nhận tin. **LƯU Ý:** Email cũ đã được thay thế. Bot chỉ kiểm tra hộp thư của email mới nhất này.", 
             ACCENT_COLOR, 
             fields=[
                 ("📧 Địa Chỉ Email", f"```\n{email_address}```", False), 
                 ("🌐 Nền Tảng", "Mail.tm", True),
-                ("⏱️ Thời Hạn", "Đến khi bạn xóa", True)
+                ("⏱️ Thời Hạn", "Tự động hết hạn", True)
             ],
             footer_text=f"Tạo bởi {interaction.user.name} | Click nút để kiểm tra!"
         )
@@ -383,7 +352,7 @@ async def get_temp_email(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(embed=create_styled_embed("❌ Lỗi Hệ Thống", f"Đã xảy ra lỗi không xác định: `{e}`", ERROR_COLOR), ephemeral=True)
 
-# --- 4.1 Xử lý lỗi Cooldown ---
+# --- 5.1 Xử lý lỗi Cooldown ---
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
     if isinstance(error, CommandOnCooldown):
@@ -405,45 +374,83 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
-        # Xử lý các lỗi khác như lỗi 50035 (Invalid Form Body)
-        # Note: Lỗi 50035 đã được FIX triệt để trong logic nút bấm (CheckMailView)
-        # Nếu lỗi khác xảy ra, gửi thông báo lỗi chung
-        print(f"Lỗi: {error}")
+        # Xử lý các lỗi khác
         await interaction.response.send_message(
             embed=create_styled_embed("❌ Lỗi Hệ Thống Chung", f"Đã xảy ra lỗi không xác định: `{error}`", ERROR_COLOR),
             ephemeral=True
         )
 
 
-@bot.tree.command(name="check_mail", description="Kiểm tra hộp thư email ảo hiện tại của bạn.")
+@bot.tree.command(name="check_mail", description="Kiểm tra hộp thư email ảo gần nhất của bạn.")
 async def check_temp_mail(interaction: discord.Interaction):
     user_id = interaction.user.id
     
+    # ********** BƯỚC ẢI AI: KIỂM TRA GIÁM SÁT THỜI GIAN THỰC **********
+    monitor = get_user_monitor(user_id)
+    is_safe, ban_message = monitor.check_ban_status()
+    
+    if not is_safe:
+        await interaction.response.send_message(embed=create_styled_embed("🚫 AI BLOCK", ban_message, ERROR_COLOR), ephemeral=True)
+        return
+    # ********** KẾT THÚC BƯỚC ẢI AI **********
+
     await interaction.response.defer(ephemeral=True, thinking=True)
     
-    result_embed = await check_mail_logic(user_id)
+    result_embed = await check_mail_logic(user_id) 
     
     if user_id in user_temp_mails:
+        # Dùng CheckMailView đã bỏ nút Xóa
         await interaction.followup.send(embed=result_embed, view=CheckMailView(user_id), ephemeral=True)
     else:
         await interaction.followup.send(embed=result_embed, ephemeral=True)
 
 
-@bot.tree.command(name="delete_email", description="Xóa email ảo đang hoạt động của bạn.")
-async def delete_temp_email(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    
-    result_embed = await delete_email_account_logic(user_id)
-    
-    await interaction.followup.send(embed=result_embed, ephemeral=True)
+# LOẠI BỎ LỆNH /delete_email
 
 @bot.tree.command(name="help", description="Hiển thị bảng lệnh Siêu Hiện Đại.")
 async def help_command(interaction: discord.Interaction):
-    await render_help_embed(interaction)
+    
+    # CẬP NHẬT LỆNH HELP
+    embed = create_styled_embed(
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V5.0 (AI Supervision - No Deletion)",
+        "Chào mừng bạn đến với hệ thống tạo email tạm thời **Mail.tm**. **LƯU Ý:** Bot không còn lệnh xóa mail, mail cũ sẽ bị quên khi tạo mail mới.",
+        VIBRANT_COLOR, 
+        fields=[
+            ("⚡️ Lệnh Chính", "Tạo một địa chỉ email tạm thời mới.", False),
+            (
+                "Cách Dùng", 
+                "```bash\n/get_email\n```", 
+                True
+            ),
+            (
+                "Mô Tả", 
+                "Tạo email mới. Email này sẽ thay thế email đang được theo dõi của bạn. Được giám sát gắt gao bởi AI.", 
+                True
+            ),
+            ("📥 Lệnh Kiểm Tra", "Xem và làm mới hộp thư đến của email gần nhất của bạn.", False),
+             (
+                "Cách Dùng", 
+                "```bash\n/check_mail\n```", 
+                True
+            ),
+            (
+                "Mô Tả", 
+                "Kiểm tra thủ công (**5 thư gần nhất**) của email hiện tại.", 
+                True
+            ),
+            ("⚠️ LỆNH XÓA", "Không có lệnh xóa. Email ảo sẽ tự động hết hạn.", False),
+            (
+                "Cách Dùng", 
+                "Email cũ sẽ tự động bị thay thế bởi email mới khi dùng `/get_email`.", 
+                True
+            )
+        ],
+        footer_text="© Hyper-Aesthetic System | AI Monitoring System V5.0 Active"
+    )
 
-# --- 5. FIX RENDER: Thiết lập Web Server Flask ---
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# --- 6. FIX RENDER: Thiết lập Web Server Flask ---
 
 app = Flask(__name__)
 
@@ -456,7 +463,7 @@ def run_flask():
     """Chạy Flask server trên thread riêng."""
     app.run(host="0.0.0.0", port=PORT)
 
-# --- 6. Sự kiện và Khởi động Bot Chính ---
+# --- 7. Sự kiện và Khởi động Bot Chính ---
 
 @bot.event
 async def on_ready():
@@ -466,6 +473,7 @@ async def on_ready():
     print('Bắt đầu đồng bộ hóa lệnh slash...')
     
     try:
+        # Đồng bộ lệnh slash (đã loại bỏ /delete_email)
         synced = await bot.tree.sync()
         print(f"✅ Đã đồng bộ hóa {len(synced)} lệnh slash.")
     except Exception as e:
