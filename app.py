@@ -1,11 +1,9 @@
 import os
 from flask import Flask, request, jsonify
-# SỬA: Dùng cách import chính xác cho thư viện google-genai
 from google import genai 
-from google.genai.errors import APIError # SỬA: Đảm bảo đường dẫn chính xác
+from google.genai.errors import APIError 
 import logging
 
-# Thiết lập logging cơ bản để dễ dàng gỡ lỗi trên Render
 logging.basicConfig(level=logging.INFO)
 
 # --- KHỞI TẠO ỨNG DỤNG ---
@@ -57,7 +55,6 @@ def ask_gemini():
         
         logging.info(f"Đang hỏi Gemini với prompt: {prompt[:50]}...")
         
-        # Gọi mô hình Gemini
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
@@ -80,7 +77,7 @@ def ask_gemini():
         logging.error(f"Lỗi không xác định: {str(e)}")
         return jsonify({"error": "Lỗi không xác định", "message": str(e)}), 500
 
-# --- Lệnh chạy ứng dụng (Chỉ chạy khi kiểm thử cục bộ) ---
+# Phần này không chạy trên Render
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
             
