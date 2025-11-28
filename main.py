@@ -18,10 +18,7 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 PORT = int(os.environ.get("PORT", 10000)) 
 # ==========================================================
 
-# --- CẤU HÌNH TỰ KHỞI ĐỘNG LẠI ---
-# ĐẶT LẠI THÀNH 5 TIẾNG (18000 giây) - Tối ưu hiệu suất
-RESTART_INTERVAL_SECONDS = 5 * 3600 
-# ---
+# >>> CƠ CHẾ TỰ KHỞI ĐỘNG LẠI (5 TIẾNG) ĐÃ BỊ XÓA BỎ HOÀN TOÀN <<<
 
 # --- 1. Thiết lập Cấu hình API, Lưu trữ và Bảng Màu Thống nhất ---
 
@@ -51,9 +48,9 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=None, intents=intents, help_command=None) 
 
 # ==========================================================
-# >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) V8.0 <<<
+# >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) V9.0 <<<
 # ==========================================================
-# (Lớp này không thay đổi so với V7.0)
+# (Lớp này không thay đổi, chỉ cập nhật tên version)
 class AIAntiAbuseMonitor:
     """Giả lập hệ thống AI bảo vệ và giám sát người chơi thời gian thực."""
     
@@ -84,7 +81,7 @@ class AIAntiAbuseMonitor:
             
         if self.abuse_score >= self.ABUSE_THRESHOLD:
             self.banned_until = current_time + 3600  
-            return False, "🛑 AI V8.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
+            return False, "🛑 AI V9.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
 
         return True, None
 
@@ -105,7 +102,6 @@ class AIAntiAbuseMonitor:
 
 def create_styled_embed(title, description, color, fields=None, footer_text=None):
     """Hàm tiện ích tạo Embed với style hiện đại."""
-    # CHỈNH SỬA: Đảm bảo Title không bao giờ vượt quá 256 ký tự
     title = title[:256] 
     
     embed = discord.Embed(
@@ -115,17 +111,15 @@ def create_styled_embed(title, description, color, fields=None, footer_text=None
     )
     if fields:
         for name, value, inline in fields:
-            # CHỈNH SỬA: Đảm bảo field name/value không bị lỗi định dạng
             name = str(name)[:256] if name else "Không tên"
             value = str(value)[:1024] if value else "Không nội dung"
             embed.add_field(name=name, value=value, inline=inline)
             
     if footer_text:
-        # Hỗ trợ nhiều dòng trong footer
         footer_text = str(footer_text)[:2048]
         for line in footer_text.split('\n'):
             embed.set_footer(text=line)
-            break # Chỉ lấy dòng đầu tiên của footer
+            break 
             
     return embed
 
@@ -189,8 +183,6 @@ async def check_mail_logic(user_id: int):
         )
 
         for i, msg in enumerate(messages[:5]): 
-            # Bắt buộc phải defer interaction nếu việc tải chi tiết thư có thể mất thời gian
-            # Nhưng ở đây, ta chỉ trả về embed nên không cần defer ở logic này.
             detail_response = requests.get(f"{API_BASE_URL}/messages/{msg['id']}", headers=headers, timeout=DEFAULT_TIMEOUT)
             
             sender = msg.get('from', {}).get('address', 'Ẩn danh')
@@ -216,7 +208,6 @@ async def check_mail_logic(user_id: int):
                     False
                 ))
         
-        # Đảm bảo fields được thêm vào Embed sau khi tạo
         for name, value, inline in embed_fields:
             embed.add_field(name=name, value=value, inline=inline)
 
@@ -228,7 +219,6 @@ async def check_mail_logic(user_id: int):
     except HTTPError as e:
         return create_styled_embed("🛑 Lỗi Phản Hồi API", f"API Mail.tm lỗi HTTP: {e.response.status_code}. Token có thể hết hạn.", ERROR_COLOR)
     except Exception as e:
-        # CHỈNH SỬA: Log lỗi để debug
         print(f"Lỗi Xử Lý Dữ Liệu: {e}")
         return create_styled_embed("❌ Lỗi Xử Lý Dữ Liệu", f"Đã xảy ra lỗi không xác định: `{e}`. Vui lòng thử lại.", ERROR_COLOR)
 
@@ -247,7 +237,6 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # CHỈNH SỬA: Đảm bảo trả lời tương tác trước khi làm mới
         await interaction.response.edit_message(
             embed=create_styled_embed("🔄 Đang Làm Mới Mail...", "Vui lòng chờ trong giây lát. Hệ thống đang kiểm tra hộp thư...", VIBRANT_COLOR),
             view=self
@@ -269,12 +258,10 @@ class EmailCreationView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
-        # CHỈNH SỬA: defer() nếu logic kiểm tra mail kéo dài
         await interaction.response.defer(thinking=True, ephemeral=True) 
         
         result_embed = await check_mail_logic(self.user_id)
         
-        # CHỈNH SỬA: Sử dụng followup để gửi tin nhắn mới
         await interaction.followup.send(embed=result_embed, view=CheckMailView(self.user_id), ephemeral=True)
 
 
@@ -378,7 +365,7 @@ async def get_temp_email(interaction: discord.Interaction):
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Tự động hết hạn", True)
             ],
-            footer_text=f"Cooldown ngẫu nhiên tiếp theo: {new_cooldown_str}\n© Hyper-Aesthetic System | AI Monitoring System V8.0 Active"
+            footer_text=f"Cooldown ngẫu nhiên tiếp theo: {new_cooldown_str}\n© Hyper-Aesthetic System | AI Monitoring System V9.0 Active - Permanent Run"
         )
 
         await interaction.followup.send(embed=embed, view=EmailCreationView(user_id), ephemeral=True)
@@ -393,9 +380,7 @@ async def get_temp_email(interaction: discord.Interaction):
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    # Đảm bảo lệnh response không bị gọi 2 lần
     if not interaction.response.is_done():
-        # CHỈNH SỬA: Thay vì gửi lỗi thô, ta gửi embed lỗi
         await interaction.response.send_message(
             embed=create_styled_embed("❌ Lỗi Hệ Thống Chung", f"Đã xảy ra lỗi không xác định: `{error}`", ERROR_COLOR),
             ephemeral=True
@@ -425,11 +410,9 @@ async def check_temp_mail(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Hiển thị bảng lệnh Siêu Hiện Đại.")
 async def help_command(interaction: discord.Interaction):
     
-    restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
-    
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V8.0 (Auto-Restart 5 Tiếng)",
-        "Bot đã được fix lỗi 400 và đặt lại chế độ **Tự khởi động lại** sau mỗi 5 tiếng để tối ưu hóa hiệu suất.",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V9.0 (PERMANENT RUN)",
+        "Bot đã được tối ưu hóa để chạy **liên tục**, **loại bỏ** cơ chế tự khởi động lại nội bộ. Bot chỉ cần **UptimeRobot ping** để hoạt động 24/24.",
         VIBRANT_COLOR, 
         fields=[
             ("⚡️ Lệnh Chính: /get_email", "Tạo một địa chỉ email tạm thời mới.", False),
@@ -444,14 +427,14 @@ async def help_command(interaction: discord.Interaction):
                 "Kiểm tra thủ công (**5 thư gần nhất**) của email hiện tại.", 
                 True
             ),
-            ("🔄 Tự Động Khởi Động Lại", "Cơ chế quản lý hiệu suất.", False),
+            ("🔄 Trạng Thái Vận Hành", "Bot hoạt động bền vững.", False),
             (
                 "Ghi Chú", 
-                f"Bot sẽ tự động khởi động lại sau mỗi **{restart_time_str}** để tối ưu hóa bộ nhớ.", 
+                "Bot sẽ **chạy liên tục** mà không tự tắt. Chỉ khởi động lại nếu có sự cố hệ thống.", 
                 True
             )
         ],
-        footer_text="© Hyper-Aesthetic System | AI Monitoring System V8.0 Active"
+        footer_text="© Hyper-Aesthetic System | AI Monitoring System V9.0 Active - Permanent Run"
     )
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
@@ -463,31 +446,14 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     """Endpoint cơ bản để Render kiểm tra bot còn hoạt động không."""
-    return "Bot Discord Email Ảo đang hoạt động!", 200
+    # Khi UptimeRobot ping, hàm này trả về 200 OK.
+    return "Bot Discord Email Ảo V9.0 đang hoạt động (Permanent Run)!", 200
 
 def run_flask():
     """Chạy Flask server trên thread riêng."""
     app.run(host="0.0.0.0", port=PORT)
 
-# ==========================================================
-# >>> 7. CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 GIỜ (V8.0) <<<
-# ==========================================================
-def scheduled_restart():
-    """Chờ 5 tiếng, sau đó buộc tiến trình bot kết thúc để Render khởi động lại."""
-    
-    restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
-    
-    print('---' * 15)
-    print(f"⏰ Kích hoạt bộ đếm TỰ KHỞI ĐỘNG LẠI: {restart_time_str}.")
-    print('---' * 15)
-    
-    time.sleep(RESTART_INTERVAL_SECONDS)
-    
-    print(f"\n\n🚨🚨 Đã hết {restart_time_str}. Buộc thoát để Render khởi động lại... 🚨🚨\n\n")
-    os._exit(1)
-
-
-# --- 8. Sự kiện và Khởi động Bot Chính ---
+# --- 7. Sự kiện và Khởi động Bot Chính ---
 
 @bot.event
 async def on_ready():
@@ -510,14 +476,13 @@ def main():
         print("LỖI: Biến môi trường DISCORD_TOKEN chưa được thiết lập.")
         return
         
-    # Chạy Flask server trên một thread riêng (FIX Treo Render)
+    # Chạy Flask server trên một thread riêng (QUAN TRỌNG: để nhận Ping từ UptimeRobot)
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    # ⚡️ CHẠY BỘ ĐẾM TỰ KHỞI ĐỘNG LẠI TRÊN THREAD RIÊNG
-    restart_thread = threading.Thread(target=scheduled_restart)
-    restart_thread.start()
-    
+    # 🚨 LƯU Ý: ĐÃ XÓA CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 TIẾNG 🚨
+    # Bot sẽ chạy cho đến khi Render tự restart (rất hiếm) hoặc bot bị crash.
+
     try:
         bot.run(DISCORD_TOKEN)
     except discord.errors.LoginFailure:
