@@ -19,8 +19,8 @@ PORT = int(os.environ.get("PORT", 10000))
 # ==========================================================
 
 # --- CẤU HÌNH TỰ KHỞI ĐỘNG LẠI ---
-# 5 tiếng * 3600 giây/tiếng = 18000 giây
-RESTART_INTERVAL_SECONDS = 5 * 3600 
+# ĐÃ ĐẶT LÀ 5 PHÚT (300 giây) ĐỂ KIỂM TRA TÍNH NĂNG
+RESTART_INTERVAL_SECONDS = 5 * 60 
 # ---
 
 # --- 1. Thiết lập Cấu hình API, Lưu trữ và Bảng Màu Thống nhất ---
@@ -29,12 +29,12 @@ API_BASE_URL = "https://api.mail.tm"
 DEFAULT_TIMEOUT = 15
 
 # Bảng Màu Siêu Hiện Đại (Hyper-Aesthetic)
-VIBRANT_COLOR = 0x30D5C8      # Neon Cyan/Turquoise (Chủ đạo)
-ACCENT_COLOR = 0xFF5733       # Bright Orange (Nhấn mạnh)
-ERROR_COLOR = 0xED4245        # Discord Red
-WARNING_COLOR = 0xFEE75C      # Discord Yellow
-SUCCESS_COLOR = 0x57F287      # Discord Green
-NEUTRAL_COLOR = 0x2F3136      # Discord Dark Gray (Nền)
+VIBRANT_COLOR = 0x30D5C8      
+ACCENT_COLOR = 0xFF5733       
+ERROR_COLOR = 0xED4245        
+WARNING_COLOR = 0xFEE75C      
+SUCCESS_COLOR = 0x57F287      
+NEUTRAL_COLOR = 0x2F3136      
 
 # Key: Discord User ID (int), Value: {'address': str, 'token': str, 'account_id': str}
 user_temp_mails = {}
@@ -62,37 +62,29 @@ class AIAntiAbuseMonitor:
 
     def __init__(self, user_id):
         self.user_id = user_id
-        # Điểm lạm dụng (tăng khi có hành vi đáng ngờ)
         self.abuse_score = 0
-        # Mốc thời gian tạo email gần nhất
         self.last_email_creation_time = time.time()
-        # Số lượng email đã tạo trong 1 giờ qua
         self.email_count_last_hour = 0
-        # Thời gian bị cấm (timestamp)
         self.banned_until = 0
         
-        # --- CƠ CHẾ COOLDOWN NGẪU NHIÊN V7.0 ---
-        self.cooldown_duration = 0      # Độ dài cooldown ngẫu nhiên được gán
-        self.cooldown_start_time = 0    # Thời điểm cooldown được bắt đầu
+        self.cooldown_duration = 0      
+        self.cooldown_start_time = 0    
 
     def check_and_update_creation(self):
         """Kiểm tra và cập nhật khi người dùng tạo email mới."""
         current_time = time.time()
 
-        # Reset bộ đếm nếu đã qua 1 giờ
         if current_time - self.last_email_creation_time > 3600:
             self.email_count_last_hour = 0
             self.last_email_creation_time = current_time
 
         self.email_count_last_hour += 1
 
-        # CẢNH BÁO: Tăng điểm lạm dụng nếu tạo quá nhanh
         if self.email_count_last_hour > self.MAX_EMAIL_PER_HOUR:
             self.abuse_score += 2
             
-        # Nếu điểm lạm dụng vượt ngưỡng, cấm 1 giờ
         if self.abuse_score >= self.ABUSE_THRESHOLD:
-            self.banned_until = current_time + 3600  # Cấm 1 giờ
+            self.banned_until = current_time + 3600  
             return False, "🛑 AI V7.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
 
         return True, None
@@ -104,9 +96,8 @@ class AIAntiAbuseMonitor:
             time_left = self.banned_until - current_time
             return False, f"🛑 HỆ THỐNG AI ĐÃ CHẶN: Bạn bị cấm truy cập bot. Vui lòng chờ {int(time_left // 60)} phút {int(time_left % 60)} giây."
         
-        # Giảm điểm lạm dụng khi không bị cấm
         if self.abuse_score > 0:
-            self.abuse_score -= 1 # Giảm dần điểm lạm dụng
+            self.abuse_score -= 1 
             
         return True, None
 # ==========================================================
@@ -125,7 +116,6 @@ def create_styled_embed(title, description, color, fields=None, footer_text=None
         for name, value, inline in fields:
             embed.add_field(name=name, value=value, inline=inline)
     if footer_text:
-        # Hỗ trợ nhiều dòng trong footer
         for line in footer_text.split('\n'):
             embed.set_footer(text=line)
     return embed
@@ -287,7 +277,6 @@ async def get_temp_email(interaction: discord.Interaction):
     time_elapsed = current_time - monitor.cooldown_start_time
     
     if time_elapsed < monitor.cooldown_duration:
-        # User is on cooldown
         remaining = monitor.cooldown_duration - time_elapsed
         
         time_left_str = format_time_duration(remaining)
@@ -392,7 +381,6 @@ async def get_temp_email(interaction: discord.Interaction):
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    # Xử lý các lỗi khác ngoài Cooldown đã tùy chỉnh
     if not interaction.response.is_done():
         await interaction.response.send_message(
             embed=create_styled_embed("❌ Lỗi Hệ Thống Chung", f"Đã xảy ra lỗi không xác định: `{error}`", ERROR_COLOR),
@@ -423,12 +411,11 @@ async def check_temp_mail(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Hiển thị bảng lệnh Siêu Hiện Đại.")
 async def help_command(interaction: discord.Interaction):
     
-    # Lấy thời gian khởi động lại dưới dạng chuỗi
     restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
     
     embed = create_styled_embed(
         "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V7.0 (Auto-Restart)",
-        "Bot hiện tại có chế độ **Tự khởi động lại** sau mỗi 5 tiếng để đảm bảo hiệu suất ổn định.",
+        "Bot hiện tại có chế độ **Tự khởi động lại** sau mỗi 5 phút để bạn tiện kiểm tra.",
         VIBRANT_COLOR, 
         fields=[
             ("⚡️ Lệnh Chính: /get_email", "Tạo một địa chỉ email tạm thời mới.", False),
@@ -446,7 +433,7 @@ async def help_command(interaction: discord.Interaction):
             ("🔄 Tự Động Khởi Động Lại", "Cơ chế quản lý hiệu suất.", False),
             (
                 "Ghi Chú", 
-                f"Bot sẽ tự động khởi động lại sau mỗi **{int(RESTART_INTERVAL_SECONDS/3600)} tiếng** ({restart_time_str}) để tối ưu hóa bộ nhớ.", 
+                f"Bot sẽ tự động khởi động lại sau mỗi **{restart_time_str}** để kiểm tra tính năng. (Sẽ đổi lại 5 tiếng sau khi kiểm tra).", 
                 True
             )
         ],
@@ -469,10 +456,10 @@ def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
 # ==========================================================
-# >>> 7. CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 GIỜ (V7.0) <<<
+# >>> 7. CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 PHÚT (V7.0) <<<
 # ==========================================================
 def scheduled_restart():
-    """Chờ 5 tiếng, sau đó buộc tiến trình bot kết thúc để Render khởi động lại."""
+    """Chờ 5 phút, sau đó buộc tiến trình bot kết thúc để Render khởi động lại."""
     
     restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
     
@@ -480,11 +467,9 @@ def scheduled_restart():
     print(f"⏰ Kích hoạt bộ đếm TỰ KHỞI ĐỘNG LẠI: {restart_time_str}.")
     print('---' * 15)
     
-    # Bot ngủ trong 5 tiếng
     time.sleep(RESTART_INTERVAL_SECONDS)
     
     print(f"\n\n🚨🚨 Đã hết {restart_time_str}. Buộc thoát để Render khởi động lại... 🚨🚨\n\n")
-    # os._exit(1) buộc thoát ngay lập tức. Render sẽ phát hiện lỗi và khởi động lại dịch vụ.
     os._exit(1)
 
 
