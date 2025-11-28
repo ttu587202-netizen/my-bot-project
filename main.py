@@ -19,8 +19,8 @@ PORT = int(os.environ.get("PORT", 10000))
 # ==========================================================
 
 # --- CẤU HÌNH TỰ KHỞI ĐỘNG LẠI ---
-# ĐÃ ĐẶT LÀ 5 PHÚT (300 giây) ĐỂ KIỂM TRA TÍNH NĂNG
-RESTART_INTERVAL_SECONDS = 5 * 60 
+# ĐẶT LẠI THÀNH 5 TIẾNG (18000 giây) - Tối ưu hiệu suất
+RESTART_INTERVAL_SECONDS = 5 * 3600 
 # ---
 
 # --- 1. Thiết lập Cấu hình API, Lưu trữ và Bảng Màu Thống nhất ---
@@ -48,17 +48,17 @@ user_ai_monitor = {}
 intents = discord.Intents.default()
 intents.message_content = True 
 
-# Tạo Bot với cấu hình tối giản
 bot = commands.Bot(command_prefix=None, intents=intents, help_command=None) 
 
 # ==========================================================
-# >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) V7.0 <<<
+# >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) V8.0 <<<
 # ==========================================================
+# (Lớp này không thay đổi so với V7.0)
 class AIAntiAbuseMonitor:
     """Giả lập hệ thống AI bảo vệ và giám sát người chơi thời gian thực."""
     
-    ABUSE_THRESHOLD = 5         # Ngưỡng lạm dụng để bị cấm tạm thời
-    MAX_EMAIL_PER_HOUR = 10     # Giới hạn số email tạo trong 1 giờ
+    ABUSE_THRESHOLD = 5         
+    MAX_EMAIL_PER_HOUR = 10     
 
     def __init__(self, user_id):
         self.user_id = user_id
@@ -71,7 +71,6 @@ class AIAntiAbuseMonitor:
         self.cooldown_start_time = 0    
 
     def check_and_update_creation(self):
-        """Kiểm tra và cập nhật khi người dùng tạo email mới."""
         current_time = time.time()
 
         if current_time - self.last_email_creation_time > 3600:
@@ -85,12 +84,11 @@ class AIAntiAbuseMonitor:
             
         if self.abuse_score >= self.ABUSE_THRESHOLD:
             self.banned_until = current_time + 3600  
-            return False, "🛑 AI V7.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
+            return False, "🛑 AI V8.0: Cấm truy cập 1 giờ do lạm dụng tần suất tạo mail quá mức."
 
         return True, None
 
     def check_ban_status(self):
-        """Kiểm tra xem người dùng có đang bị cấm hay không."""
         current_time = time.time()
         if self.banned_until > current_time:
             time_left = self.banned_until - current_time
@@ -107,6 +105,9 @@ class AIAntiAbuseMonitor:
 
 def create_styled_embed(title, description, color, fields=None, footer_text=None):
     """Hàm tiện ích tạo Embed với style hiện đại."""
+    # CHỈNH SỬA: Đảm bảo Title không bao giờ vượt quá 256 ký tự
+    title = title[:256] 
+    
     embed = discord.Embed(
         title=title,
         description=description,
@@ -114,20 +115,26 @@ def create_styled_embed(title, description, color, fields=None, footer_text=None
     )
     if fields:
         for name, value, inline in fields:
+            # CHỈNH SỬA: Đảm bảo field name/value không bị lỗi định dạng
+            name = str(name)[:256] if name else "Không tên"
+            value = str(value)[:1024] if value else "Không nội dung"
             embed.add_field(name=name, value=value, inline=inline)
+            
     if footer_text:
+        # Hỗ trợ nhiều dòng trong footer
+        footer_text = str(footer_text)[:2048]
         for line in footer_text.split('\n'):
             embed.set_footer(text=line)
+            break # Chỉ lấy dòng đầu tiên của footer
+            
     return embed
 
 def get_user_monitor(user_id):
-    """Lấy hoặc tạo mới đối tượng AI giám sát cho người dùng."""
     if user_id not in user_ai_monitor:
         user_ai_monitor[user_id] = AIAntiAbuseMonitor(user_id)
     return user_ai_monitor[user_id]
 
 def format_time_duration(seconds):
-    """Định dạng thời gian từ giây sang phút và giây."""
     if seconds < 1:
         return "1 giây"
     
@@ -182,6 +189,8 @@ async def check_mail_logic(user_id: int):
         )
 
         for i, msg in enumerate(messages[:5]): 
+            # Bắt buộc phải defer interaction nếu việc tải chi tiết thư có thể mất thời gian
+            # Nhưng ở đây, ta chỉ trả về embed nên không cần defer ở logic này.
             detail_response = requests.get(f"{API_BASE_URL}/messages/{msg['id']}", headers=headers, timeout=DEFAULT_TIMEOUT)
             
             sender = msg.get('from', {}).get('address', 'Ẩn danh')
@@ -207,6 +216,7 @@ async def check_mail_logic(user_id: int):
                     False
                 ))
         
+        # Đảm bảo fields được thêm vào Embed sau khi tạo
         for name, value, inline in embed_fields:
             embed.add_field(name=name, value=value, inline=inline)
 
@@ -218,6 +228,8 @@ async def check_mail_logic(user_id: int):
     except HTTPError as e:
         return create_styled_embed("🛑 Lỗi Phản Hồi API", f"API Mail.tm lỗi HTTP: {e.response.status_code}. Token có thể hết hạn.", ERROR_COLOR)
     except Exception as e:
+        # CHỈNH SỬA: Log lỗi để debug
+        print(f"Lỗi Xử Lý Dữ Liệu: {e}")
         return create_styled_embed("❌ Lỗi Xử Lý Dữ Liệu", f"Đã xảy ra lỗi không xác định: `{e}`. Vui lòng thử lại.", ERROR_COLOR)
 
 
@@ -235,6 +247,7 @@ class CheckMailView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
+        # CHỈNH SỬA: Đảm bảo trả lời tương tác trước khi làm mới
         await interaction.response.edit_message(
             embed=create_styled_embed("🔄 Đang Làm Mới Mail...", "Vui lòng chờ trong giây lát. Hệ thống đang kiểm tra hộp thư...", VIBRANT_COLOR),
             view=self
@@ -256,10 +269,12 @@ class EmailCreationView(discord.ui.View):
             await interaction.response.send_message("❌ Bạn không có quyền tương tác với mail của người khác.", ephemeral=True)
             return
 
+        # CHỈNH SỬA: defer() nếu logic kiểm tra mail kéo dài
         await interaction.response.defer(thinking=True, ephemeral=True) 
         
         result_embed = await check_mail_logic(self.user_id)
         
+        # CHỈNH SỬA: Sử dụng followup để gửi tin nhắn mới
         await interaction.followup.send(embed=result_embed, view=CheckMailView(self.user_id), ephemeral=True)
 
 
@@ -298,7 +313,6 @@ async def get_temp_email(interaction: discord.Interaction):
         await interaction.response.send_message(embed=create_styled_embed("🚫 AI BLOCK", ban_message, ERROR_COLOR), ephemeral=True)
         return
     
-    # Cập nhật AI monitor (theo dõi hành vi tạo mail)
     is_safe, ban_message = monitor.check_and_update_creation()
     if not is_safe:
         await interaction.response.send_message(embed=create_styled_embed("🚫 AI BLOCK", ban_message, ERROR_COLOR), ephemeral=True)
@@ -341,12 +355,10 @@ async def get_temp_email(interaction: discord.Interaction):
         login_response.raise_for_status()
         token = login_response.json()['token']
         
-        # CẬP NHẬT EMAIL MỚI (Email cũ bị quên)
         user_temp_mails[user_id] = {'address': email_address, 'token': token, 'account_id': account_id}
         
         
         # ********** 5.3 ÁP DỤNG COOLDOWN NGẪU NHIÊN MỚI **********
-        # Tạo ngẫu nhiên từ 30 giây đến 300 giây (5 phút)
         new_cooldown = random.randint(30, 300) 
         
         monitor.cooldown_duration = new_cooldown
@@ -366,7 +378,7 @@ async def get_temp_email(interaction: discord.Interaction):
                 ("🌐 Nền Tảng", "Mail.tm", True),
                 ("⏱️ Thời Hạn", "Tự động hết hạn", True)
             ],
-            footer_text=f"Cooldown ngẫu nhiên tiếp theo: {new_cooldown_str}\n© Hyper-Aesthetic System | AI Monitoring System V7.0 Active"
+            footer_text=f"Cooldown ngẫu nhiên tiếp theo: {new_cooldown_str}\n© Hyper-Aesthetic System | AI Monitoring System V8.0 Active"
         )
 
         await interaction.followup.send(embed=embed, view=EmailCreationView(user_id), ephemeral=True)
@@ -381,7 +393,9 @@ async def get_temp_email(interaction: discord.Interaction):
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    # Đảm bảo lệnh response không bị gọi 2 lần
     if not interaction.response.is_done():
+        # CHỈNH SỬA: Thay vì gửi lỗi thô, ta gửi embed lỗi
         await interaction.response.send_message(
             embed=create_styled_embed("❌ Lỗi Hệ Thống Chung", f"Đã xảy ra lỗi không xác định: `{error}`", ERROR_COLOR),
             ephemeral=True
@@ -414,8 +428,8 @@ async def help_command(interaction: discord.Interaction):
     restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
     
     embed = create_styled_embed(
-        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V7.0 (Auto-Restart)",
-        "Bot hiện tại có chế độ **Tự khởi động lại** sau mỗi 5 phút để bạn tiện kiểm tra.",
+        "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V8.0 (Auto-Restart 5 Tiếng)",
+        "Bot đã được fix lỗi 400 và đặt lại chế độ **Tự khởi động lại** sau mỗi 5 tiếng để tối ưu hóa hiệu suất.",
         VIBRANT_COLOR, 
         fields=[
             ("⚡️ Lệnh Chính: /get_email", "Tạo một địa chỉ email tạm thời mới.", False),
@@ -433,11 +447,11 @@ async def help_command(interaction: discord.Interaction):
             ("🔄 Tự Động Khởi Động Lại", "Cơ chế quản lý hiệu suất.", False),
             (
                 "Ghi Chú", 
-                f"Bot sẽ tự động khởi động lại sau mỗi **{restart_time_str}** để kiểm tra tính năng. (Sẽ đổi lại 5 tiếng sau khi kiểm tra).", 
+                f"Bot sẽ tự động khởi động lại sau mỗi **{restart_time_str}** để tối ưu hóa bộ nhớ.", 
                 True
             )
         ],
-        footer_text="© Hyper-Aesthetic System | AI Monitoring System V7.0 Active"
+        footer_text="© Hyper-Aesthetic System | AI Monitoring System V8.0 Active"
     )
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
@@ -456,10 +470,10 @@ def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
 # ==========================================================
-# >>> 7. CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 PHÚT (V7.0) <<<
+# >>> 7. CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 GIỜ (V8.0) <<<
 # ==========================================================
 def scheduled_restart():
-    """Chờ 5 phút, sau đó buộc tiến trình bot kết thúc để Render khởi động lại."""
+    """Chờ 5 tiếng, sau đó buộc tiến trình bot kết thúc để Render khởi động lại."""
     
     restart_time_str = format_time_duration(RESTART_INTERVAL_SECONDS)
     
