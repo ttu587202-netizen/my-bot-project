@@ -24,6 +24,7 @@ PORT = int(os.environ.get("PORT", 10000))
 
 API_BASE_URL = "https://api.mail.tm"
 DEFAULT_TIMEOUT = 15
+RENDER_URL = "https://my-bot-project-44vv.onrender.com" # URL CỦA BẠN ĐÃ ĐƯỢC CẬP NHẬT
 
 # Bảng Màu Siêu Hiện Đại (Hyper-Aesthetic)
 VIBRANT_COLOR = 0x30D5C8      
@@ -50,7 +51,6 @@ bot = commands.Bot(command_prefix=None, intents=intents, help_command=None)
 # ==========================================================
 # >>> 2. LỚP GIÁM SÁT AI (AI Monitoring System) V9.0 <<<
 # ==========================================================
-# (Lớp này không thay đổi, chỉ cập nhật tên version)
 class AIAntiAbuseMonitor:
     """Giả lập hệ thống AI bảo vệ và giám sát người chơi thời gian thực."""
     
@@ -412,7 +412,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed = create_styled_embed(
         "🌐  HYPER-MAIL: DỊCH VỤ EMAIL ẢO V9.0 (PERMANENT RUN)",
-        "Bot đã được tối ưu hóa để chạy **liên tục**, **loại bỏ** cơ chế tự khởi động lại nội bộ. Bot chỉ cần **UptimeRobot ping** để hoạt động 24/24.",
+        "Bot đã được tối ưu hóa để chạy **liên tục 24/24** bằng cách sử dụng UptimeRobot.",
         VIBRANT_COLOR, 
         fields=[
             ("⚡️ Lệnh Chính: /get_email", "Tạo một địa chỉ email tạm thời mới.", False),
@@ -427,10 +427,10 @@ async def help_command(interaction: discord.Interaction):
                 "Kiểm tra thủ công (**5 thư gần nhất**) của email hiện tại.", 
                 True
             ),
-            ("🔄 Trạng Thái Vận Hành", "Bot hoạt động bền vững.", False),
+            ("🔄 Cấu hình 24/24 (UptimeRobot)", "Đảm bảo bot luôn hoạt động.", False),
             (
                 "Ghi Chú", 
-                "Bot sẽ **chạy liên tục** mà không tự tắt. Chỉ khởi động lại nếu có sự cố hệ thống.", 
+                f"Để bot chạy liên tục, bạn cần thiết lập UptimeRobot để ping địa chỉ này:\n**`{RENDER_URL}`**", 
                 True
             )
         ],
@@ -446,7 +446,6 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     """Endpoint cơ bản để Render kiểm tra bot còn hoạt động không."""
-    # Khi UptimeRobot ping, hàm này trả về 200 OK.
     return "Bot Discord Email Ảo V9.0 đang hoạt động (Permanent Run)!", 200
 
 def run_flask():
@@ -480,8 +479,7 @@ def main():
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    # 🚨 LƯU Ý: ĐÃ XÓA CHỨC NĂNG TỰ KHỞI ĐỘNG LẠI SAU 5 TIẾNG 🚨
-    # Bot sẽ chạy cho đến khi Render tự restart (rất hiếm) hoặc bot bị crash.
+    # Bot sẽ chạy liên tục, chỉ khởi động lại khi có sự cố hệ thống (Render/Code Crash).
 
     try:
         bot.run(DISCORD_TOKEN)
